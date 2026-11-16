@@ -1,8 +1,8 @@
-import { h } from './js/core/dom.js';
-import { ROLES } from './config.js';
-import { SchedulerView } from './js/views/SchedulerView.js';
-import { DoctorView } from './js/views/DoctorView.js';
-import { StudentView } from './js/views/StudentView.js';
+import { h } from './core/dom.js';
+import { ROLES } from '../config.js'; // لو الـ config برا الـ js، أو `./config.js` لو جواه
+import { SchedulerView } from './views/SchedulerView.js';
+import { DoctorView } from './views/DoctorView.js';
+import { StudentView } from './views/StudentView.js';
 
 const VIEWS = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
 
