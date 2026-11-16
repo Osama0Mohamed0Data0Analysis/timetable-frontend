@@ -10,29 +10,28 @@ export class SchedulerView {
     this.selectedInstructor = '';
   }
 
-  // دالة دقيقة جداً لجلب القيم من الشيت بدون التباس الأعمدة
-  getVal(item, exactKeys, includeKeys) {
+  // دالة دقيقة جداً لجلب القيم بالتطابق التام والجزئي الصحيح مع أعمدة الشيت
+  getVal(item, possibleKeys) {
     if (!item) return '';
     const keys = Object.keys(item);
-
-    // 1. البحث بالتطابق التام أولاً
-    for (const k of keys) {
-      const lk = k.toLowerCase().trim();
-      for (const ek of exactKeys) {
-        if (lk === ek.toLowerCase()) {
+    
+    // 1. تطابق تام أولاً
+    for (const pk of possibleKeys) {
+      for (const k of keys) {
+        if (k.trim() === pk.trim()) {
           const val = item[k];
           if (val !== undefined && val !== null && val !== '') return val.toString().trim();
         }
       }
     }
-
-    // 2. البحث الجزئي مع استبعاد الأعمدة الخطأ (مثل تجنب كود المادة عند البحث عن الاسم)
-    for (const k of keys) {
-      const lk = k.toLowerCase().trim();
-      if (lk.includes('كود') && exactKeys.some(e => e.includes('مادة'))) continue;
-
-      for (const ik of includeKeys) {
-        if (lk.includes(ik.toLowerCase())) {
+    
+    // 2. تطابق جزئي مع تجنب قراءة "كود المادة" عند البحث عن اسم المادة
+    for (const pk of possibleKeys) {
+      for (const k of keys) {
+        const lk = k.toLowerCase().trim();
+        const lpk = pk.toLowerCase().trim();
+        if (lk.includes(lpk)) {
+          if (lpk.includes('مادة') && lk.includes('كود')) continue;
           const val = item[k];
           if (val !== undefined && val !== null && val !== '') return val.toString().trim();
         }
@@ -155,8 +154,6 @@ export class SchedulerView {
       if (loadingEl) loadingEl.style.display = 'block';
 
       const data = await this.api.getData();
-      console.log("📥 البيانات المستلمة من الشيت:", data);
-      
       this.schedules = Array.isArray(data) ? data : (data.schedules || []);
       const rawInstructors = data.instructors || [];
 
@@ -165,19 +162,19 @@ export class SchedulerView {
       const yearSet = new Set();
 
       rawInstructors.forEach(inst => {
-        const name = this.getVal(inst, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name'], ['اسم', 'دكتور', 'معيد']);
+        const name = this.getVal(inst, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'الاسم', 'name']);
         if (name) instructorSet.add(name);
       });
 
       this.schedules.forEach(item => {
-        const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel'], ['فرقة']);
+        const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
         if (yL) yearSet.add(yL);
 
-        const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department'], ['قسم', 'شعبة']);
+        const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
         if (dept) departmentSet.add(dept);
 
-        const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'], ['د.', 'محاضر', 'دكتور']);
-        const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant'], ['معيد', 'سكشن']);
+        const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
+        const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
         
         if (doc) doc.split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
         if (ast) ast.split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
@@ -240,10 +237,10 @@ export class SchedulerView {
     tbody.innerHTML = '';
 
     const filtered = this.schedules.filter(item => {
-      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel'], ['فرقة']);
-      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department'], ['قسم', 'شعبة']);
-      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'], ['د.', 'محاضر', 'دكتور']);
-      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant'], ['معيد', 'سكشن']);
+      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
+      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
+      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
+      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
 
       const matchYear = !this.selectedYear || yL.includes(this.selectedYear);
       const matchDept = !this.selectedDepartment || dept.includes(this.selectedDepartment);
@@ -274,12 +271,10 @@ export class SchedulerView {
           const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
           
-          // جلب اسم المادة الصحيح متجنباً أي أكواد
-          const subject = this.getVal(matchedItem, ['اسم المادة *', 'اسم المادة', 'subject', 'course'], ['اسم المادة', 'المادة']) || 'مادة دراسية';
-          // جلب القاعة الصحيحة
-          const hall = this.getVal(matchedItem, ['نوع القاعة المطلوبة *', 'القاعة', 'hall', 'room'], ['قاعة', 'مدرج']) || 'قاعة غير محددة';
-          // جلب اسم الدكتور أو المعيد الصحيح
-          const doctor = isLecture ? (this.getVal(matchedItem, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'], ['د.', 'محاضر', 'دكتور']) || 'غير محدد') : (this.getVal(matchedItem, ['المعيدين / السكاشن', 'assistant'], ['معيد', 'سكشن']) || 'غير محدد');
+          // سحب اسم المادة الحقيقي (وليس كود المادة)
+          const subject = this.getVal(matchedItem, ['اسم المادة *', 'اسم المادة', 'subject', 'course']) || 'مادة دراسية';
+          const hall = this.getVal(matchedItem, ['نوع القاعة المطلوبة *', 'القاعة', 'hall', 'room']) || 'قاعة غير محددة';
+          const doctor = isLecture ? (this.getVal(matchedItem, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || 'غير محدد') : (this.getVal(matchedItem, ['المعيدين / السكاشن', 'assistant']) || 'غير محدد');
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
