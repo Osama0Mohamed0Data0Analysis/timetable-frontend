@@ -1,5 +1,4 @@
 import { App } from './App.js';
-// تم تعديل مسار ورتلاس اسم الملف ليكون مطابقاً لـ GitHub تماماً (ApiClient.js)
 import { ScheduleApiClient } from './js/api/ApiClient.js';
 
 // رابط الـ Web App الخاص بك على Google Apps Script
