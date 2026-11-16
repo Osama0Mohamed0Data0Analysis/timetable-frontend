@@ -10,11 +10,11 @@ export class SchedulerView {
     container.innerHTML = `
       <div class="schedule-container" style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
         
-        <!-- شريط الفلاتر العلوي -->
-        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
+        <!-- شريط الفلاتر العلوي المطابق للصورة -->
+        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; margin-bottom: 15px; flex-wrap: wrap;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <label style="font-weight: bold; color: #334155;">الفرقة:</label>
-            <select id="filterYear" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.95rem;">
+            <label style="font-weight: bold; color: #334155; font-size: 0.95rem;">الفرقة</label>
+            <select id="filterYear" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.95rem; cursor: pointer;">
               <option value="الفرقة الأولى">الفرقة الأولى</option>
               <option value="الفرقة الثانية">الفرقة الثانية</option>
               <option value="الفرقة الثالثة">الفرقة الثالثة</option>
@@ -23,25 +23,29 @@ export class SchedulerView {
           </div>
 
           <div style="display: flex; align-items: center; gap: 10px;">
-            <label style="font-weight: bold; color: #334155;">المجموعة:</label>
-            <select id="filterGroup" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.95rem;">
-              <option value="مجموعة 1">مجموعة 1</option>
-              <option value="مجموعة 2">مجموعة 2</option>
-              <option value="مجموعة 3">مجموعة 3</option>
-              <option value="مجموعة 4">مجموعة 4</option>
+            <label style="font-weight: bold; color: #334155; font-size: 0.95rem;">المجموعة</label>
+            <select id="filterGroup" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.95rem; cursor: pointer;">
+              <option value="مجموعة 1">الفرقة الأولى - مجموعة 1</option>
+              <option value="مجموعة 2">الفرقة الأولى - مجموعة 2</option>
+              <option value="مجموعة 3">الفرقة الأولى - مجموعة 3</option>
+              <option value="مجموعة 4">الفرقة الأولى - مجموعة 4</option>
             </select>
           </div>
 
-          <div style="margin-right: auto; color: #0284c7; font-weight: bold;" id="statusText">
+          <div style="margin-right: auto; background: #f1f5f9; padding: 6px 14px; border-radius: 6px; border-right: 4px solid #10b981; color: #065f46; font-size: 0.9rem; font-weight: bold;">
             جدولك محدث، متاح
           </div>
         </div>
+
+        <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 20px; padding-right: 5px;">
+          وضع تجريبي: في النظام الحقيقي كل شخص بيدخل بحسابه، والنظام بيحدد دوره وبيفتح له شاشته بس. هنا بتنقل بين الأدوار بإيدك عشان تشوف الفرق.
+        </p>
 
         <!-- جدول الحصص الشبكي -->
         <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
           <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري تحميل الجدول الأسبوعي...</div>
           
-          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 900px;" border="0">
+          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
                 <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
@@ -107,11 +111,11 @@ export class SchedulerView {
     });
 
     const timeSlots = [
-      "09:00 - 10:00",
-      "10:00 - 11:00",
-      "11:00 - 12:00",
-      "12:00 - 13:00",
-      "13:00 - 14:00"
+      "10:00 - 09:00",
+      "11:00 - 10:00",
+      "12:00 - 11:00",
+      "13:00 - 12:00",
+      "14:00 - 13:00"
     ];
 
     const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"];
@@ -119,10 +123,11 @@ export class SchedulerView {
     timeSlots.forEach((slot, slotIndex) => {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid #e2e8f0';
-      tr.style.height = '95px';
+      tr.style.height = '100px';
 
       let rowHtml = '';
 
+      // الأيام من الأحد (يمين) إلى الخميس (يسار)
       days.forEach((day, dayIndex) => {
         let matchedItem = filtered.find(item => (item.day === day && item.timeSlot === slot));
         
@@ -133,7 +138,8 @@ export class SchedulerView {
 
         if (matchedItem) {
           const isLecture = slotIndex % 2 === 0;
-          const bgCard = isLecture ? '#f1f5f9' : '#fef3c7'; // لون أزرق فاتح للمحاضرة، برتقالي خفيف للسكشن
+          // ألوان مطابقة تماماً للصورة الأصلية (أزرق فاتح للمحاضرة، برتقالي هادئ للسكشن)
+          const bgCard = isLecture ? '#e2e8f0' : '#fef3c7'; 
           const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
           const hallName = matchedItem.hall || matchedItem['نوع القاعة المطلوبة *'] || 'مدرج 2';
@@ -141,10 +147,10 @@ export class SchedulerView {
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: transform 0.2s;">
-                <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">${matchedItem.subject || 'محاسبة (1)'}</div>
+              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">${matchedItem.subject || 'الرياضيات التجارية'}</div>
                 <div style="font-size: 0.85rem; color: #475569; margin-bottom: 2px;">${typeLabel} • ${hallName}</div>
-                <div style="font-size: 0.8rem; color: #0284c7; font-weight: 500;">${instructor}</div>
+                <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${instructor}</div>
               </div>
             </td>
           `;
@@ -153,8 +159,9 @@ export class SchedulerView {
         }
       });
 
+      // عمود الوقت في أقصى اليسار تماماً كما في الصورة الصحيحة
       rowHtml += `
-        <td style="padding: 12px; font-weight: bold; color: #475569; background: #f8fafc; font-size: 0.9rem; border-left: 1px solid #e2e8f0; text-align: center;">
+        <td style="padding: 12px; font-weight: bold; color: #334155; background: #f8fafc; font-size: 0.9rem; text-align: center; width: 130px;">
           ${slot}
         </td>
       `;
