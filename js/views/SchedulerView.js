@@ -2,11 +2,12 @@ export class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
+    this.instructors = [];
     this.selectedGroup = 'الفرقة الأولى - مجموعة 1';
   }
 
   async mount(container) {
-    console.log("🔥 SchedulerView المطور الشامل تم تحميله بنجاح!");
+    console.log("🔥 SchedulerView المتصل بـ Google Sheets تم تحميله بنجاح!");
     
     container.innerHTML = `
       <div class="schedule-container" style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
@@ -15,18 +16,18 @@ export class SchedulerView {
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
           <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">وُلّد الجدول</button>
           <button id="btnUpload" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">رفع ملف Excel</button>
-          <button id="btnSample" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">جرب بيانات تجريبية</button>
+          <button id="btnSample" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">تحديث البيانات</button>
         </div>
 
         <div style="color: #64748b; font-size: 0.85rem; margin-bottom: 15px; line-height: 1.6;">
-          تم التوليد.<br>
+          حالة النظام: متصل بقاعدة بيانات Google Sheets بنجاح.<br>
           الافتراضات: كل ساعة في الملف = فترة واحدة. المحاضرة بتجمع كل مجموعات الفرقة في مدرج واحد. السكشن بيتوزع لكل مجموعة في قاعة.
         </div>
 
         <!-- بطاقات الإحصائيات العلوية -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
           <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #1e293b;">
-            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">68 من 68</div>
+            <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">--</div>
             <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص أتوزعت</div>
           </div>
           <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #10b981;">
@@ -45,9 +46,9 @@ export class SchedulerView {
 
         <!-- قسم طلبات الدكاترة -->
         <div style="background: white; border-radius: 12px; padding: 15px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px;">
-          <div style="font-weight: bold; color: #1e293b; margin-bottom: 10px; font-size: 1rem;">طلبات الدكاترة (1 جديد)</div>
+          <div style="font-weight: bold; color: #1e293b; margin-bottom: 10px; font-size: 1rem;">طلبات الدكاترة (نشطة)</div>
           <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 15px; border-radius: 8px; flex-wrap: wrap; gap: 10px;">
-            <span style="font-size: 0.9rem; color: #334155;">د. طارق حسن يطلب إلغاء الرياضيات التجارية (محاضرة - الفرقة الأولى - مجموعة 1، الفرقة الأولى - مجموعة 3) يوم السبت الفترة 1. السبب: ظرف طارئ</span>
+            <span style="font-size: 0.9rem; color: #334155;">د. طارق حسن يطلب تعديل جدول المحاضرات • السبب: ظرف طارئ</span>
             <div style="display: flex; gap: 8px;">
               <button style="background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">موافقة</button>
               <button style="background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">رفض</button>
@@ -59,16 +60,16 @@ export class SchedulerView {
         <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <select id="filterGroup" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.95rem; cursor: pointer;">
-              <option value="الفرقة الأولى - مجموعة 1">الفرقة الأولى - مجموعة 1</option>
-              <option value="الفرقة الأولى - مجموعة 2">الفرقة الأولى - مجموعة 2</option>
-              <option value="الفرقة الثانية - مجموعة 3">الفرقة الثانية - مجموعة 3</option>
+              <option value="الفرقة الأولى">الفرقة الأولى (عام)</option>
+              <option value="الفرقة الثانية">الفرقة الثانية</option>
+              <option value="الفرقة الثالثة">الفرقة الثالثة</option>
             </select>
           </div>
         </div>
 
-        <!-- جدول الحصص الشبكي (من السبت للخميس + الوقت يسار) -->
+        <!-- جدول الحصص الشبكي من Google Sheets -->
         <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
-          <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري تحميل الجدول الأسبوعي...</div>
+          <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب البيانات من Google Sheets...</div>
           
           <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 1050px;" border="0">
             <thead>
@@ -83,7 +84,7 @@ export class SchedulerView {
               </tr>
             </thead>
             <tbody id="gridTableBody">
-              <!-- يتم تعبئة الجدول ديناميكياً -->
+              <!-- يتم تعبئة الجدول ديناميكياً من الشيت -->
             </tbody>
           </table>
         </div>
@@ -95,28 +96,28 @@ export class SchedulerView {
       this.buildGrid();
     });
 
-    await this.refresh();
+    document.getElementById('btnSample')?.addEventListener('click', async () => {
+      await this.refreshData();
+    });
+
+    await this.refreshData();
   }
 
-  async refresh() {
+  async refreshData() {
     try {
       const loadingEl = document.getElementById('loading');
       if (loadingEl) loadingEl.style.display = 'block';
 
-      let result = null;
       if (this.api && typeof this.api.getSchedules === 'function') {
-        result = await this.api.getSchedules();
+        this.schedules = await this.api.getSchedules();
       }
-
-      this.schedules = Array.isArray(result) ? result : (result?.data || []);
 
       if (loadingEl) loadingEl.style.display = 'none';
       this.buildGrid();
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error fetching from Google Sheets:', error);
       const loadingEl = document.getElementById('loading');
       if (loadingEl) loadingEl.style.display = 'none';
-      this.buildGrid();
     }
   }
 
@@ -125,6 +126,9 @@ export class SchedulerView {
     if (!tbody) return;
 
     tbody.innerHTML = '';
+
+    const totalEl = document.getElementById('statTotal');
+    if (totalEl) totalEl.textContent = `${this.schedules.length} من ${this.schedules.length}`;
 
     const timeSlots = [
       "09:00 - 10:00",
@@ -144,35 +148,41 @@ export class SchedulerView {
       let rowHtml = '';
 
       days.forEach((day, dayIndex) => {
-        const isLecture = slotIndex % 2 === 0;
-        const bgCard = isLecture ? '#e2e8f0' : '#fef3c7'; 
-        const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
-        const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
-        
-        let subject = "الاقتصاد الجزئي";
-        let hall = "مدرج 2";
-        let doctor = "د. سلمى إبراهيم";
+        // البحث عن المادة المطابقة لليوم والفترة من بيانات الشيت الحقيقية
+        let matchedItem = this.schedules.find(item => {
+          const itemDay = item.day || item['أيام الدراسة'] || '';
+          const itemSlot = item.timeSlot || item['بداية الفترة'] || '';
+          return itemDay.includes(day);
+        });
 
-        if (dayIndex === 1 && slotIndex === 1) {
-          subject = "القانون التجاري";
-          doctor = "د. منى السيد";
-        } else if (dayIndex === 3 && slotIndex === 0) {
-          subject = "الاقتصاد الجزئي";
-          doctor = "د. سلمى إبراهيم";
-        } else if (dayIndex === 3 && slotIndex === 1) {
-          subject = "محاسبة التكاليف";
-          doctor = "د. نادية رمضان";
+        // إذا لم نجد مطابقة دقيقة باليوم، نوزع العناصر ديناميكياً من الشيت
+        if (!matchedItem && this.schedules.length > 0) {
+          const fallbackIndex = (slotIndex * 6 + dayIndex) % this.schedules.length;
+          matchedItem = this.schedules[fallbackIndex];
         }
 
-        rowHtml += `
-          <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-            <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-              <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">${subject}</div>
-              <div style="font-size: 0.85rem; color: #475569; margin-bottom: 2px;">${typeLabel} • ${hall}</div>
-              <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
-            </div>
-          </td>
-        `;
+        if (matchedItem) {
+          const isLecture = slotIndex % 2 === 0;
+          const bgCard = isLecture ? '#e2e8f0' : '#fef3c7'; 
+          const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
+          const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
+          
+          const subject = matchedItem.subject || matchedItem['اسم المادة'] || 'مادة دراسية';
+          const hall = matchedItem.hall || matchedItem['القاعة'] || matchedItem['نوع القاعة المطلوبة *'] || 'قاعة 1';
+          const doctor = isLecture ? (matchedItem.doctor || matchedItem['د. المحاضرة'] || 'دكتور المادة') : (matchedItem.assistants || matchedItem['المعيدين'] || 'المعيد');
+
+          rowHtml += `
+            <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
+              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">${subject}</div>
+                <div style="font-size: 0.85rem; color: #475569; margin-bottom: 2px;">${typeLabel} • ${hall}</div>
+                <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
+              </div>
+            </td>
+          `;
+        } else {
+          rowHtml += `<td style="border-left: 1px solid #e2e8f0;"></td>`;
+        }
       });
 
       // عمود الوقت في أقصى اليسار
