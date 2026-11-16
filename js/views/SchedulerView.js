@@ -10,9 +10,6 @@ export class SchedulerView {
         <div style="display: flex; gap: 10px; margin-bottom: 20px;">
           <button id="btnFetchDemo" style="padding: 10px 20px; background: #1e293b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">تحديث البيانات</button>
         </div>
-        
-        <h2 style="color: #1e293b; font-size: 1.6rem; margin-bottom: 5px;">مولّد الجداول الأكاديمية</h2>
-        <p style="color: #64748b; font-size: 0.95rem; margin-bottom: 20px;">نموذج أولي: يقرأ بيانات الكلية، ويوزّع المحاضرات والسكاشن من غير تعارضات.</p>
 
         <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
           <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold;">جاري تحميل الجدول...</div>
@@ -46,38 +43,19 @@ export class SchedulerView {
   async refresh() {
     try {
       const loadingEl = document.getElementById('loading');
-      if (loadingEl) {
-        loadingEl.style.display = 'block';
-        loadingEl.innerText = 'جاري تحميل البيانات...';
-      }
+      if (loadingEl) loadingEl.style.display = 'block';
 
       let result = null;
-      // التحقق الذكي: هل الـ api و getSchedules موجودان وصالحان للاستخدام؟
       if (this.api && typeof this.api.getSchedules === 'function') {
-        try {
-          result = await this.api.getSchedules();
-        } catch (e) {
-          console.warn('تعذر الجلب من الـ API، الانتقال للبيانات التجريبية');
-        }
+        result = await this.api.getSchedules();
       }
 
-      // إذا لم تُرجع الـ API بيانات، نستخدم البيانات التجريبية المطابقة للفيديو فوراً
-      if (!result || (Array.isArray(result) && result.length === 0) || (result.data && result.data.length === 0)) {
-        this.schedules = [
-          { code: "C01", subject: "الرياضيات التجارية", yearLevel: "الفرقة الأولى", department: "عام", semester: "الأول", hall: "قاعة 1", doctor: "د. طارق حسن", assistants: "أ. محمد يسري" },
-          { code: "C02", subject: "مبادئ المحاسبة", yearLevel: "الفرقة الأولى", department: "عام", semester: "الأول", hall: "قاعة 2", doctor: "د. حنان ايمن", assistants: "أ. مريم محمود" },
-          { code: "C03", subject: "الإدارة المالية", yearLevel: "الفرقة الثالثة", department: "إدارة", semester: "الأول", hall: "مسرع 3", doctor: "د. منى اسامة", assistants: "أ. أحمد محمد" },
-          { code: "C04", subject: "إدارة الأعمال الاستراتيجية", yearLevel: "الفرقة الرابعة", department: "إدارة", semester: "الأول", hall: "مدرج 1", doctor: "د. اية عامر", assistants: "أ. إبراهيم طه" },
-          { code: "C05", subject: "الاقتصاد الجزئي", yearLevel: "الفرقة الثانية", department: "عام", semester: "الأول", hall: "قاعة 3", doctor: "د. سامح إبراهيم", assistants: "أ. كرم سعد" }
-        ];
-      } else {
-        this.schedules = Array.isArray(result) ? result : (result?.data || []);
-      }
+      this.schedules = Array.isArray(result) ? result : (result?.data || []);
 
       if (loadingEl) loadingEl.style.display = 'none';
       this.build();
     } catch (error) {
-      console.error('خطأ في عرض الجداول:', error);
+      console.error('Error:', error);
       const loadingEl = document.getElementById('loading');
       if (loadingEl) loadingEl.style.display = 'none';
       this.build();
@@ -99,14 +77,14 @@ export class SchedulerView {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid #f1f5f9';
       tr.innerHTML = `
-        <td style="padding: 12px; color: #334155;">${item.code || item['كود المادة'] || ''}</td>
-        <td style="padding: 12px; color: #334155; font-weight: 500;">${item.subject || item['اسم المادة *'] || item['اسم المادة'] || ''}</td>
-        <td style="padding: 12px; color: #334155;">${item.yearLevel || item['الفرقة *'] || item['الفرقة'] || ''}</td>
-        <td style="padding: 12px; color: #334155;">${item.department || item['الشعبة / القسم'] || ''}</td>
-        <td style="padding: 12px; color: #334155;">${item.semester || item['الفصل الدراسي'] || ''}</td>
-        <td style="padding: 12px; color: #334155;">${item.hall || item['نوع القاعة المطلوبة *'] || ''}</td>
-        <td style="padding: 12px; color: #334155;">${item.doctor || item['د. المحاضرة *'] || ''}</td>
-        <td style="padding: 12px; color: #334155;">${item.assistants || item['المعيدين / السكاشن'] || ''}</td>
+        <td style="padding: 12px; color: #334155;">${item.code || ''}</td>
+        <td style="padding: 12px; color: #334155; font-weight: 500;">${item.subject || ''}</td>
+        <td style="padding: 12px; color: #334155;">${item.yearLevel || ''}</td>
+        <td style="padding: 12px; color: #334155;">${item.department || ''}</td>
+        <td style="padding: 12px; color: #334155;">${item.semester || ''}</td>
+        <td style="padding: 12px; color: #334155;">${item.hall || ''}</td>
+        <td style="padding: 12px; color: #334155; font-weight: 500; color: #0284c7;">${item.doctor || ''}</td>
+        <td style="padding: 12px; color: #334155;">${item.assistants || ''}</td>
       `;
       tbody.appendChild(tr);
     });
