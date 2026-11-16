@@ -1,39 +1,25 @@
-import { View } from '../core/View.js';
-import { h, option } from '../core/dom.js';
-import { REASONS } from '../config.js';
-import { Timetable, ChangeRequest } from '../models/index.js';
-import { SessionCard } from '../components/SessionCard.js';
-import { TimetableGrid } from '../components/TimetableGrid.js';
-
-/** Role 2: see own timetable, send a cancel request with a reason, track "طلباتي". */
-export class DoctorView extends View {
-  constructor(api) { super(api); this.grid = new TimetableGrid(); this.doctor = null; this.reason = REASONS[0]; }
-
-  #field(label, ...kids) { return h('label', { class: 'field' }, label, kids); }
-
-  async #apologize(session) {
-    await this.api.createRequest({ sessionId: session.id, doctor: this.doctor, reason: this.reason });
-    await this.refresh();
+export class DoctorView {
+  constructor(api) {
+    this.api = api;
   }
-
-  async build() {
-    const meta = await this.api.getMeta();
-    this.doctor ??= meta.doctors.find((d) => d.includes('طارق')) ?? meta.doctors[0];
-    const [raw, reqs] = await Promise.all([this.api.getTimetable(), this.api.listRequests(this.doctor)]);
-    const sessions = new Timetable(raw).forDoctor(this.doctor);
-    const mine = reqs.map((r) => new ChangeRequest(r));
-    const canApologize = (s) => s.requestStatus !== 'pending' && s.requestStatus !== 'approved';
-
-    return [
-      h('div', { class: 'row' },
-        this.#field('اختر اسمك', h('select', { onChange: (e) => { this.doctor = e.target.value; this.refresh(); } }, meta.doctors.map((d) => option(d, d, d === this.doctor)))),
-        this.#field('سبب الاعتذار', h('select', { onChange: (e) => { this.reason = e.target.value; } }, REASONS.map((r) => option(r, r, r === this.reason))))),
-      this.grid.render(sessions, (s) => new SessionCard(s, {
-        detail: s.groups.join('، '),
-        action: canApologize(s) ? h('button', { class: 'btn sm', onClick: () => this.#apologize(s) }, 'اعتذار') : null,
-      })),
-      h('h2', {}, 'طلباتي'),
-      mine.length ? h('ul', { class: 'mine' }, mine.map((r) => h('li', {}, `${r.session.course} (${r.slot()}): ${r.statusLabel}`))) : h('p', { class: 'hint' }, 'لسه مبعتّش أي طلب.'),
-    ];
+  async mount(container) {
+    container.innerHTML = `
+      <div style="padding: 20px; direction: rtl; text-align: right;">
+        <h2>لوحة عضو هيئة التدريس</h2>
+        <p>مرحباً بك، يمكنك متابعة جدول المحاضرات وإرسال طلبات التعديل أو الاعتذار.</p>
+        <div style="background: white; padding: 20px; border-radius: 8px; margin-top: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+          <h3>إرسال طلب للمنسق</h3>
+          <textarea id="docRequestMsg" placeholder="اكتب طلبك هنا..." style="width: 100%; height: 100px; padding: 10px; margin: 10px 0; border: 1px solid #cbd5e1; border-radius: 6px;"></textarea>
+          <button id="sendReqBtn" style="padding: 10px 20px; background: #0284c7; color: white; border: none; border-radius: 6px; cursor: pointer;">إرسال الطلب</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('sendReqBtn')?.addEventListener('click', async () => {
+      const msg = document.getElementById('docRequestMsg').value;
+      if (!msg) return alert('الرجاء كتابة الطلب أولاً');
+      await this.api.sendDoctorRequest({ doctorName: "عضو هيئة التدريس", message: msg, status: "pending" });
+      alert('تم إرسال الطلب بنجاح!');
+      document.getElementById('docRequestMsg').value = '';
+    });
   }
 }
