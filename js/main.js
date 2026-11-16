@@ -1,5 +1,6 @@
 import { App } from './App.js';
-import { ScheduleApiClient } from './js/api/api.js';
+// تم تعديل مسار ورتلاس اسم الملف ليكون مطابقاً لـ GitHub تماماً (ApiClient.js)
+import { ScheduleApiClient } from './js/api/ApiClient.js';
 
 // رابط الـ Web App الخاص بك على Google Apps Script
 const API_URL = "https://script.google.com/macros/s/AKfycbyKEAc4qs4Agsu8kZiI4jn7EabdIWIoIH36Cf5ym08e47nHIbSiugicg6LRQ6BJFLy1dQ/exec";
