@@ -79,7 +79,7 @@ export class HttpApiClient extends ApiClient {
   }
 
   async createRequest(payload) { 
-    return await this.s#sendGas ? await this.#sendGas('addRequest', 'POST', { action: 'addRequest', data: payload }) : { success: true }; 
+    return await this.#sendGas('addRequest', 'POST', { action: 'addRequest', data: payload }); 
   }
 
   async resolveRequest(id, decision) { 
