@@ -3,7 +3,9 @@ export class SchedulerView {
     this.api = api;
     this.schedules = [];
     this.instructorsList = [];
+    this.departmentsList = [];
     this.selectedYear = 'الفرقة الأولى';
+    this.selectedDepartment = '';
     this.selectedInstructor = '';
   }
 
@@ -39,8 +41,10 @@ export class SchedulerView {
             </div>
           </div>
 
-          <!-- شريط الفلاتر وزر الدكاترة والمعيدين -->
+          <!-- شريط الفلاتر: الفرقة، الأقسام، والدكاترة والمعيدين -->
           <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
+            
+            <!-- فلتر الفرقة -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">الفرقة</label>
               <select id="filterYear" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.9rem; cursor: pointer;">
@@ -51,6 +55,15 @@ export class SchedulerView {
               </select>
             </div>
 
+            <!-- زر/قائمة الأقسام والشعبة الميكانيكية -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">📚 الأقسام</label>
+              <select id="filterDepartment" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
+                <option value="">-- كل الأقسام (عرض الكل) --</option>
+              </select>
+            </div>
+
+            <!-- زر/قائمة الدكاترة والمعيدين الميكانيكية -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
               <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
@@ -89,6 +102,11 @@ export class SchedulerView {
         this.buildGrid();
       });
 
+      document.getElementById('filterDepartment')?.addEventListener('change', (e) => {
+        this.selectedDepartment = e.target.value;
+        this.buildGrid();
+      });
+
       document.getElementById('filterInstructor')?.addEventListener('change', (e) => {
         this.selectedInstructor = e.target.value;
         this.buildGrid();
@@ -115,12 +133,17 @@ export class SchedulerView {
       const rawInstructors = data.instructors || [];
 
       const instructorSet = new Set();
+      const departmentSet = new Set();
+
       rawInstructors.forEach(inst => {
         const name = inst['اسم الدكتور / المعيد *'] || inst['اسم الدكتور / المعيد'] || inst.name || '';
         if (name) instructorSet.add(name.toString().trim());
       });
 
       this.schedules.forEach(item => {
+        const dept = item['الشعبة / القسم'] || item['القسم'] || item.department || '';
+        if (dept) departmentSet.add(dept.toString().trim());
+
         const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
         const ast = item['المعيدين / السكاشن'] || item.assistants || '';
         if (doc) doc.toString().split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
@@ -128,7 +151,9 @@ export class SchedulerView {
       });
 
       this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
-      this.populateInstructorSelect();
+      this.departmentsList = Array.from(departmentSet).filter(Boolean).sort();
+
+      this.populateDropdowns();
 
       if (loadingEl) loadingEl.style.display = 'none';
       this.buildGrid();
@@ -140,17 +165,28 @@ export class SchedulerView {
     }
   }
 
-  populateInstructorSelect() {
-    const select = document.getElementById('filterInstructor');
-    if (!select) return;
-    
-    select.innerHTML = `<option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>`;
-    this.instructorsList.forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      select.appendChild(opt);
-    });
+  populateDropdowns() {
+    const deptSelect = document.getElementById('filterDepartment');
+    if (deptSelect) {
+      deptSelect.innerHTML = `<option value="">-- كل الأقسام (عرض الكل) --</option>`;
+      this.departmentsList.forEach(dept => {
+        const opt = document.createElement('option');
+        opt.value = dept;
+        opt.textContent = dept;
+        deptSelect.appendChild(opt);
+      });
+    }
+
+    const instSelect = document.getElementById('filterInstructor');
+    if (instSelect) {
+      instSelect.innerHTML = `<option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>`;
+      this.instructorsList.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        instSelect.appendChild(opt);
+      });
+    }
   }
 
   buildGrid() {
@@ -160,12 +196,15 @@ export class SchedulerView {
 
     const filtered = this.schedules.filter(item => {
       const yL = item['الفرقة *'] || item['الفرقة'] || item.yearLevel || '';
+      const dept = item['الشعبة / القسم'] || item['القسم'] || item.department || '';
       const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
       const ast = item['المعيدين / السكاشن'] || item.assistants || '';
 
       const matchYear = !this.selectedYear || yL.toString().includes(this.selectedYear);
+      const matchDept = !this.selectedDepartment || dept.toString().includes(this.selectedDepartment);
       const matchInst = !this.selectedInstructor || doc.toString().includes(this.selectedInstructor) || ast.toString().includes(this.selectedInstructor);
-      return matchYear && matchInst;
+
+      return matchYear && matchDept && matchInst;
     });
 
     const totalEl = document.getElementById('statTotal');
