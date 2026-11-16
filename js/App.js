@@ -1,8 +1,13 @@
 import { h } from './core/dom.js';
-import { ROLES } from '../config.js'; // تم تصحيح المسار ليخرج للجذر الرئيسي حيث يوجد config.js
 import { SchedulerView } from './views/SchedulerView.js';
 import { DoctorView } from './views/DoctorView.js';
 import { StudentView } from './views/StudentView.js';
+
+const ROLES = [
+  ['scheduler', 'معد الجداول'],
+  ['doctor', 'دكتور / معيد'],
+  ['student', 'طالب']
+];
 
 const VIEWS = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
 
