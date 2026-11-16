@@ -2,189 +2,154 @@ export class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.instructors = [];
-    this.requests = [];
+    this.instructorsList = [];
     this.selectedYear = 'الفرقة الأولى';
     this.selectedInstructor = '';
   }
 
   async mount(container) {
-    container.innerHTML = `
-      <div class="schedule-container" style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
-        
-        <!-- أزرار التحكم العلوية -->
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-          <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">وُلّد الجدول</button>
-          <button id="btnUpload" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">رفع ملف Excel</button>
-          <button id="btnRefresh" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">تحديث البيانات</button>
-        </div>
-
-        <!-- إحصائيات النظام الحقيقية -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
-          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #1e293b;">
-            <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص أتوزعت</div>
-          </div>
-          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #10b981;">
-            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">تعارضات</div>
-          </div>
-          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #0284c7;">
-            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">فجوات الطلاب</div>
-          </div>
-          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #f59e0b;">
-            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">1</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">محاولات</div>
-          </div>
-        </div>
-
-        <!-- لوحة طلبات الدكاترة الميكانيكية -->
-        <div style="background: white; border-radius: 12px; padding: 15px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px;">
-          <div style="font-weight: bold; color: #1e293b; margin-bottom: 12px; font-size: 1rem;">طلبات الدكاترة (<span id="reqCount">0</span> جديد)</div>
-          <div id="requestsList" style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>
-          </div>
-        </div>
-
-        <!-- شريط الفلاتر وزر الدكاترة والمعيدين -->
-        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">الفرقة</label>
-            <select id="filterYear" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.9rem; cursor: pointer;">
-              <option value="الفرقة الأولى">الفرقة الأولى</option>
-              <option value="الفرقة الثانية">الفرقة الثانية</option>
-              <option value="الفرقة الثالثة">الفرقة الثالثة</option>
-              <option value="الفرقة الرابعة">الفرقة الرابعة</option>
-            </select>
-          </div>
-
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
-            <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
-              <option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>
-            </select>
-          </div>
-
-          <div style="margin-right: auto; background: #f1f5f9; padding: 6px 14px; border-radius: 6px; border-right: 4px solid #10b981; color: #065f46; font-size: 0.9rem; font-weight: bold;">
-            جدولك محدث، متاح
-          </div>
-        </div>
-
-        <!-- جدول الحصص الشبكي (من الأحد إلى الخميس + الوقت يسار) -->
-        <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
-          <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب بيانات الشيت الأصلية...</div>
+    try {
+      container.innerHTML = `
+        <div class="schedule-container" style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
           
-          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
-            <thead>
-              <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
-                <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
-              </tr>
-            </thead>
-            <tbody id="gridTableBody"></tbody>
-          </table>
+          <!-- أزرار التحكم العلوية -->
+          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+            <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">وُلّد الجدول</button>
+            <button id="btnUpload" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">رفع ملف Excel</button>
+            <button id="btnRefresh" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">تحديث البيانات</button>
+          </div>
+
+          <!-- إحصائيات النظام الحقيقية -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
+            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #1e293b;">
+              <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص أتوزعت</div>
+            </div>
+            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #10b981;">
+              <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">تعارضات</div>
+            </div>
+            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #0284c7;">
+              <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">فجوات الطلاب</div>
+            </div>
+            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #f59e0b;">
+              <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">1</div>
+              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">محاولات</div>
+            </div>
+          </div>
+
+          <!-- شريط الفلاتر وزر الدكاترة والمعيدين -->
+          <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">الفرقة</label>
+              <select id="filterYear" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.9rem; cursor: pointer;">
+                <option value="الفرقة الأولى">الفرقة الأولى</option>
+                <option value="الفرقة الثانية">الفرقة الثانية</option>
+                <option value="الفرقة الثالثة">الفرقة الثالثة</option>
+                <option value="الفرقة الرابعة">الفرقة الرابعة</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
+              <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
+                <option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>
+              </select>
+            </div>
+
+            <div style="margin-right: auto; background: #f1f5f9; padding: 6px 14px; border-radius: 6px; border-right: 4px solid #10b981; color: #065f46; font-size: 0.9rem; font-weight: bold;">
+              جدولك محدث، متاح
+            </div>
+          </div>
+
+          <!-- جدول الحصص الشبكي -->
+          <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
+            <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب بيانات الشيت الأصلية...</div>
+            
+            <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
+              <thead>
+                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
+                  <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
+                </tr>
+              </thead>
+              <tbody id="gridTableBody"></tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    `;
+      `;
 
-    document.getElementById('filterYear')?.addEventListener('change', (e) => {
-      this.selectedYear = e.target.value;
-      this.buildGrid();
-    });
+      document.getElementById('filterYear')?.addEventListener('change', (e) => {
+        this.selectedYear = e.target.value;
+        this.buildGrid();
+      });
 
-    document.getElementById('filterInstructor')?.addEventListener('change', (e) => {
-      this.selectedInstructor = e.target.value;
-      this.buildGrid();
-    });
+      document.getElementById('filterInstructor')?.addEventListener('change', (e) => {
+        this.selectedInstructor = e.target.value;
+        this.buildGrid();
+      });
 
-    document.getElementById('btnRefresh')?.addEventListener('click', async () => {
+      document.getElementById('btnRefresh')?.addEventListener('click', async () => {
+        await this.refreshData();
+      });
+
       await this.refreshData();
-    });
-
-    await this.refreshData();
+    } catch (err) {
+      console.error("Error in SchedulerView mount:", err);
+      container.innerHTML = `<div style="padding: 20px; color: red; text-align: center;">حدث خطأ أثناء تحميل واجهة الجدول: ${err.message}</div>`;
+    }
   }
 
   async refreshData() {
-    const loadingEl = document.getElementById('loading');
-    if (loadingEl) loadingEl.style.display = 'block';
+    try {
+      const loadingEl = document.getElementById('loading');
+      if (loadingEl) loadingEl.style.display = 'block';
 
-    const data = await this.api.getData();
-    this.schedules = data.schedules || [];
-    this.requests = data.requests || [];
+      const data = await this.api.getData();
+      this.schedules = Array.isArray(data) ? data : (data.schedules || []);
+      const rawInstructors = data.instructors || [];
 
-    // استخراج أسماء الدكاترة والمعيدين ميكانيكياً من الشيت
-    const instructorSet = new Set();
-    this.schedules.forEach(item => {
-      const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
-      const ast = item['المعيدين / السكاشن'] || item.assistants || '';
-      if (doc) doc.split(',').forEach(d => instructorSet.add(d.trim()));
-      if (ast) ast.split(',').forEach(a => instructorSet.add(a.trim()));
-    });
-    this.instructors = Array.from(instructorSet).filter(Boolean);
-    this.populateInstructorSelect();
-    this.renderRequests();
+      const instructorSet = new Set();
+      rawInstructors.forEach(inst => {
+        const name = inst['اسم الدكتور / المعيد *'] || inst['اسم الدكتور / المعيد'] || inst.name || '';
+        if (name) instructorSet.add(name.toString().trim());
+      });
 
-    if (loadingEl) loadingEl.style.display = 'none';
-    this.buildGrid();
+      this.schedules.forEach(item => {
+        const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
+        const ast = item['المعيدين / السكاشن'] || item.assistants || '';
+        if (doc) doc.toString().split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
+        if (ast) ast.toString().split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
+      });
+
+      this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
+      this.populateInstructorSelect();
+
+      if (loadingEl) loadingEl.style.display = 'none';
+      this.buildGrid();
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      const loadingEl = document.getElementById('loading');
+      if (loadingEl) loadingEl.style.display = 'none';
+      this.buildGrid();
+    }
   }
 
   populateInstructorSelect() {
     const select = document.getElementById('filterInstructor');
     if (!select) return;
+    
     select.innerHTML = `<option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>`;
-    this.instructors.forEach(name => {
+    this.instructorsList.forEach(name => {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;
       select.appendChild(opt);
-    });
-  }
-
-  renderRequests() {
-    const container = document.getElementById('requestsList');
-    const countEl = document.getElementById('reqCount');
-    if (!container) return;
-
-    const pending = this.requests.filter(r => (r.status || r['الحالة'] || 'قيد المراجعة') === 'قيد المراجعة');
-    if (countEl) countEl.textContent = pending.length;
-
-    if (pending.length === 0) {
-      container.innerHTML = `<div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>`;
-      return;
-    }
-
-    container.innerHTML = '';
-    pending.forEach(req => {
-      const docName = req.doctorName || req['اسم الدكتور'] || 'دكتور';
-      const details = req.details || req['التفاصيل'] || 'طلب تعديل جدول';
-      const reason = req.reason || req['السبب'] || 'ظرف طارئ';
-
-      const div = document.createElement('div');
-      div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 12px 15px; border-radius: 8px; flex-wrap: wrap; gap: 10px; border: 1px solid #e2e8f0;";
-      div.innerHTML = `
-        <span style="font-size: 0.9rem; color: #334155;">${docName} يطلب ${details} • السبب: ${reason}</span>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn-approve" data-id="${req.id || docName}" style="background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">موافقة</button>
-          <button class="btn-reject" data-id="${req.id || docName}" style="background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">رفض</button>
-        </div>
-      `;
-
-      div.querySelector('.btn-approve').addEventListener('click', async (e) => {
-        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "تمت الموافقة" });
-        await this.refreshData();
-      });
-
-      div.querySelector('.btn-reject').addEventListener('click', async (e) => {
-        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "مرفوض" });
-        await this.refreshData();
-      });
-
-      container.appendChild(div);
     });
   }
 
@@ -198,8 +163,8 @@ export class SchedulerView {
       const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
       const ast = item['المعيدين / السكاشن'] || item.assistants || '';
 
-      const matchYear = !this.selectedYear || yL.includes(this.selectedYear);
-      const matchInst = !this.selectedInstructor || doc.includes(this.selectedInstructor) || ast.includes(this.selectedInstructor);
+      const matchYear = !this.selectedYear || yL.toString().includes(this.selectedYear);
+      const matchInst = !this.selectedInstructor || doc.toString().includes(this.selectedInstructor) || ast.toString().includes(this.selectedInstructor);
       return matchYear && matchInst;
     });
 
@@ -217,7 +182,7 @@ export class SchedulerView {
       let rowHtml = '';
       days.forEach((day, dayIndex) => {
         const dataPool = filtered.length > 0 ? filtered : this.schedules;
-        const matchedItem = dataPool[(slotIndex * 5 + dayIndex) % dataPool.length];
+        const matchedItem = dataPool.length > 0 ? dataPool[(slotIndex * 5 + dayIndex) % dataPool.length] : null;
 
         if (matchedItem) {
           const isLecture = slotIndex % 2 === 0;
