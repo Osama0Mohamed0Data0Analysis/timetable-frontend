@@ -41,7 +41,7 @@ export class SchedulerView {
             </div>
           </div>
 
-          <!-- شريط الفلاتر: الفرقة، الأقسام، والدكاترة والمعيدين -->
+          <!-- شريط الفلاتر المتكاملة والميكانيكية -->
           <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
             
             <!-- فلتر الفرقة -->
@@ -55,7 +55,7 @@ export class SchedulerView {
               </select>
             </div>
 
-            <!-- زر/قائمة الأقسام والشعبة الميكانيكية -->
+            <!-- زر/قائمة الأقسام والشعبة المستخرجة ميكانيكياً -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">📚 الأقسام</label>
               <select id="filterDepartment" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
@@ -63,7 +63,7 @@ export class SchedulerView {
               </select>
             </div>
 
-            <!-- زر/قائمة الدكاترة والمعيدين الميكانيكية -->
+            <!-- زر/قائمة الدكاترة والمعيدين المستخرجة ميكانيكياً -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
               <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
