@@ -1,26 +1,25 @@
-// --- 1. واجهة منسق الجداول ---
+// --- 1. Scheduler View ---
 class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.requests = [];
     this.groupsList = [];
     this.selectedGroup = '';
   }
 
-  getVal(item, possibleKeys) {
+  getVal(item, keys) {
     if (!item) return '';
-    const keys = Object.keys(item);
-    for (const pk of possibleKeys) {
-      for (const k of keys) {
+    const objKeys = Object.keys(item);
+    for (const pk of keys) {
+      for (const k of objKeys) {
         if (k.trim() === pk.trim()) {
           const val = item[k];
           if (val !== undefined && val !== null && val !== '') return val.toString().trim();
         }
       }
     }
-    for (const pk of possibleKeys) {
-      for (const k of keys) {
+    for (const pk of keys) {
+      for (const k of objKeys) {
         const lk = k.toLowerCase().trim();
         const lpk = pk.toLowerCase().trim();
         if (lk.includes(lpk)) {
@@ -35,62 +34,31 @@ class SchedulerView {
 
   async mount(container) {
     container.innerHTML = `
-      <div>
-        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-          <div style="display: flex; gap: 10px;">
-            <button id="btnDemo" style="background: #1e293b; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;">جرب بيانات تجريبية</button>
-            <button id="btnUpload" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;">رفع ملف Excel</button>
-            <input type="file" id="excelFileInput" style="display: none;" accept=".xlsx, .xls">
-            <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;">وُلّد الجدول</button>
-          </div>
-          <div style="color: #64748b; font-size: 0.9rem;">متزامن مع Google Sheets.</div>
+      <div style="padding: 10px; direction: rtl; text-align: right; font-family: system-ui, sans-serif;">
+        <div style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+          <button id="btnDemo" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">بيانات تجريبية</button>
+          <button id="btnRefresh" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">تحديث البيانات</button>
         </div>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص أتوزعت</div>
-          </div>
-          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #10b981; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">تعارضات</div>
-          </div>
-          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #0284c7; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">فجوات الطلاب</div>
-          </div>
-          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #f59e0b; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">1</div>
-            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">محاولات</div>
-          </div>
-        </div>
-
-        <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px;">
-          <div style="font-weight: bold; color: #1e293b; margin-bottom: 12px; font-size: 1rem;">طلبات الدكاترة (<span id="reqCount">0</span> جديد)</div>
-          <div id="requestsList" style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>
-          </div>
-        </div>
-
-        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
-          <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">الفرقة / المجموعة</label>
-          <select id="filterGroup" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.95rem; cursor: pointer; min-width: 220px; font-weight: 500; color: #1e293b;">
+        
+        <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+          <label style="font-weight: bold; color: #334155;">الفرقة / المجموعة:</label>
+          <select id="filterGroup" style="padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 200px; cursor: pointer;">
             <option value="">-- كل المجموعات --</option>
           </select>
         </div>
 
-        <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
-          <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب الجدول من Google Sheets...</div>
-          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
+        <div style="background: white; padding: 15px; border-radius: 8px; overflow-x: auto;">
+          <div id="loading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 10px;">جاري التحميل من Google Sheets...</div>
+          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 800px;">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">السبت</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
-                <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
+                <th style="padding: 10px; border-left: 1px solid #e2e8f0;">السبت</th>
+                <th style="padding: 10px; border-left: 1px solid #e2e8f0;">الأحد</th>
+                <th style="padding: 10px; border-left: 1px solid #e2e8f0;">الإثنين</th>
+                <th style="padding: 10px; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
+                <th style="padding: 10px; border-left: 1px solid #e2e8f0;">الأربعاء</th>
+                <th style="padding: 10px; border-left: 1px solid #e2e8f0;">الخميس</th>
+                <th style="padding: 10px; width: 120px;">الوقت</th>
               </tr>
             </thead>
             <tbody id="gridTableBody"></tbody>
@@ -99,31 +67,24 @@ class SchedulerView {
       </div>
     `;
 
-    document.getElementById('btnUpload').addEventListener('click', () => document.getElementById('excelFileInput').click());
-    document.getElementById('excelFileInput').addEventListener('change', () => alert("تم رفع الملف بنجاح وتمت المزامنة."));
-    document.getElementById('btnDemo').addEventListener('click', () => { alert("تم تحميل البيانات التجريبية بنجاح."); this.refreshData(); });
-    document.getElementById('btnGenerate').addEventListener('click', () => { alert("تم إعادة توليد الجدول الميكانيكي بنجاح."); this.buildGrid(); });
-    document.getElementById('filterGroup').addEventListener('change', (e) => { this.selectedGroup = e.target.value; this.buildGrid(); });
+    document.getElementById('btnRefresh').addEventListener('click', () => this.refreshData());
+    document.getElementById('btnDemo').addEventListener('click', () => { alert("تم تحميل البيانات التجريبية."); this.refreshData(); });
+    document.getElementById('filterGroup').addEventListener('change', (e) => {
+      this.selectedGroup = e.target.value;
+      this.buildGrid();
+    });
 
     await this.refreshData();
   }
 
   async refreshData() {
-    const loadingEl = document.getElementById('loading');
-    if (loadingEl) loadingEl.style.display = 'block';
+    const loading = document.getElementById('loading');
+    if (loading) loading.style.display = 'block';
 
     const data = await this.api.getData();
     this.schedules = Array.isArray(data) ? data : (data.schedules || []);
-    this.requests = data.requests || [];
-    const groupsData = data.groups || [];
 
     const groupSet = new Set();
-    groupsData.forEach(g => {
-      const yr = g['الفرقة'] || '';
-      const grp = g['المجموعة'] || '';
-      if (yr) groupSet.add(`${yr} - مجموعة ${grp || '1'}`);
-    });
-
     this.schedules.forEach(item => {
       const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
@@ -142,52 +103,8 @@ class SchedulerView {
       });
     }
 
-    this.renderRequests();
-    if (loadingEl) loadingEl.style.display = 'none';
+    if (loading) loading.style.display = 'none';
     this.buildGrid();
-  }
-
-  renderRequests() {
-    const container = document.getElementById('requestsList');
-    const countEl = document.getElementById('reqCount');
-    if (!container) return;
-
-    const pending = this.requests.filter(r => (r.status || r['الحالة'] || 'قيد المراجعة') === 'قيد المراجعة');
-    if (countEl) countEl.textContent = pending.length;
-
-    if (pending.length === 0) {
-      container.innerHTML = `<div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>`;
-      return;
-    }
-
-    container.innerHTML = '';
-    pending.forEach(req => {
-      const docName = req.doctorName || req['اسم الدكتور'] || 'دكتور';
-      const details = req.details || req['التفاصيل'] || 'طلب تعديل جدول';
-      const reason = req.reason || req['السبب'] || 'ظرف طارئ';
-
-      const div = document.createElement('div');
-      div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 12px 15px; border-radius: 8px; border: 1px solid #e2e8f0; gap: 10px; flex-wrap: wrap;";
-      div.innerHTML = `
-        <span style="font-size: 0.9rem; color: #334155;"><b>${docName}</b> يطلب ${details} • السبب: ${reason}</span>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn-approve" data-id="${req.id || docName}" style="background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">موافقة</button>
-          <button class="btn-reject" data-id="${req.id || docName}" style="background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">رفض</button>
-        </div>
-      `;
-
-      div.querySelector('.btn-approve').addEventListener('click', async (e) => {
-        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "تمت الموافقة" });
-        await this.refreshData();
-      });
-
-      div.querySelector('.btn-reject').addEventListener('click', async (e) => {
-        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "مرفوض" });
-        await this.refreshData();
-      });
-
-      container.appendChild(div);
-    });
   }
 
   buildGrid() {
@@ -202,22 +119,97 @@ class SchedulerView {
       return !this.selectedGroup || combined.includes(this.selectedGroup);
     });
 
-    const totalEl = document.getElementById('statTotal');
-    if (totalEl) totalEl.textContent = filtered.length;
-
     const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
     const days = ["السبت", "الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"];
 
     timeSlots.forEach((slot, slotIndex) => {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid #e2e8f0';
-      tr.style.height = '100px';
+      tr.style.height = '80px';
 
       let rowHtml = '';
       days.forEach((day, dayIndex) => {
-        const cellIndex = slotIndex * 6 + dayIndex;
-        const matchedItem = filtered[cellIndex] || null;
+        const item = filtered[slotIndex * 6 + dayIndex] || null;
+        if (item) {
+          const subject = this.getVal(item, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
+          const hall = this.getVal(item, ['نوع القاعة المطلوبة *', 'القاعة', 'hall']) || 'قاعة';
+          const doctor = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || 'دكتور';
+          rowHtml += `
+            <td style="padding: 6px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
+              <div style="background: #e2e8f0; border-radius: 6px; padding: 8px; text-align: center; font-size: 0.85rem;">
+                <div style="font-weight: bold; color: #1e293b;">${subject}</div>
+                <div style="color: #475569;">${hall}</div>
+                <div style="color: #0369a1;">${doctor}</div>
+              </div>
+            </td>
+          `;
+        } else {
+          rowHtml += `<td style="border-left: 1px solid #e2e8f0;"></td>`;
+        }
+      });
 
-        if (matchedItem) {
-          const isLecture = slotIndex % 2 === 0;
-          const bgCard = isLecture ? '#e2e8f0' : '#fef3c7';
+      rowHtml += `<td style="padding: 10px; font-weight: bold; color: #334155; background: #f8fafc; font-size: 0.85rem;">${slot}</td>`;
+      tr.innerHTML = rowHtml;
+      tbody.appendChild(tr);
+    });
+  }
+}
+
+// --- 2. Doctor View ---
+class DoctorView {
+  constructor(api) { this.api = api; }
+  async mount(container) {
+    container.innerHTML = `<div style="padding: 20px; background: white; border-radius: 8px;"><h3>بوابة الدكتور والمعيد</h3><p>قريباً جداً.</p></div>`;
+  }
+}
+
+// --- 3. Student View ---
+class StudentView {
+  constructor(api) { this.api = api; }
+  async mount(container) {
+    container.innerHTML = `<div style="padding: 20px; background: white; border-radius: 8px;"><h3>بوابة الطالب</h3><p>قريباً جداً.</p></div>`;
+  }
+}
+
+// --- 4. Main App ---
+export class App {
+  constructor(container, api) {
+    this.container = container;
+    this.api = api;
+  }
+
+  async start() {
+    this.container.innerHTML = `
+      <div style="background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif; direction: rtl; text-align: right; padding: 15px;">
+        <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 10px;">
+          <button id="navScheduler" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">1) منسق الجداول</button>
+          <button id="navDoctor" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">2) دكتور / معيد</button>
+          <button id="navStudent" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">3) طالب</button>
+        </div>
+        <div id="viewContainer"></div>
+      </div>
+    `;
+
+    document.getElementById('navScheduler').addEventListener('click', () => this.switchView('scheduler'));
+    document.getElementById('navDoctor').addEventListener('click', () => this.switchView('doctor'));
+    document.getElementById('navStudent').addEventListener('click', () => this.switchView('student'));
+
+    this.switchView('scheduler');
+  }
+
+  async switchView(viewName) {
+    const vc = document.getElementById('viewContainer');
+    vc.innerHTML = `<div style="text-align: center; padding: 30px; color: #0284c7; font-weight: bold;">جاري التحميل...</div>`;
+    
+    if (viewName === 'scheduler') {
+      const v = new SchedulerView(this.api);
+      await v.mount(vc);
+    } else if (viewName === 'doctor') {
+      const v = new DoctorView(this.api);
+      await v.mount(vc);
+    } else if (viewName === 'student') {
+      const v = new StudentView(this.api);
+      await v.mount(vc);
+    }
+  } 
+}
