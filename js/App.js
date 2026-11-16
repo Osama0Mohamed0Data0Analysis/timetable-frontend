@@ -1,5 +1,5 @@
 import { h } from './core/dom.js';
-import { ROLES } from '../config.js'; // لو الـ config برا الـ js، أو `./config.js` لو جواه
+import { ROLES } from '../config.js'; // تم تصحيح المسار ليخرج للجذر الرئيسي حيث يوجد config.js
 import { SchedulerView } from './views/SchedulerView.js';
 import { DoctorView } from './views/DoctorView.js';
 import { StudentView } from './views/StudentView.js';
