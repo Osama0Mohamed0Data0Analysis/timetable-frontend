@@ -138,7 +138,6 @@ export class SchedulerView {
 
         if (matchedItem) {
           const isLecture = slotIndex % 2 === 0;
-          // ألوان مطابقة تماماً للصورة الأصلية (أزرق فاتح للمحاضرة، برتقالي هادئ للسكشن)
           const bgCard = isLecture ? '#e2e8f0' : '#fef3c7'; 
           const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
@@ -159,7 +158,7 @@ export class SchedulerView {
         }
       });
 
-      // عمود الوقت في أقصى اليسار تماماً كما في الصورة الصحيحة
+      // عمود الوقت في أقصى اليسار
       rowHtml += `
         <td style="padding: 12px; font-weight: bold; color: #334155; background: #f8fafc; font-size: 0.9rem; text-align: center; width: 130px;">
           ${slot}
