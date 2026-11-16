@@ -1,4 +1,3 @@
-console.log("🔥 SchedulerView الجديد تم تحميله بنجاح!");
 export class SchedulerView {
   constructor(api) {
     this.api = api;
@@ -8,10 +7,12 @@ export class SchedulerView {
   }
 
   async mount(container) {
+    console.log("🔥 SchedulerView الجديد تم تحميله بنجاح!");
+    
     container.innerHTML = `
       <div class="schedule-container" style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
         
-        <!-- شريط الفلاتر العلوي المطابق للصورة -->
+        <!-- شريط الفلاتر العلوي -->
         <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; margin-bottom: 15px; flex-wrap: wrap;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <label style="font-weight: bold; color: #334155; font-size: 0.95rem;">الفرقة</label>
@@ -49,11 +50,11 @@ export class SchedulerView {
           <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
                 <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
                 <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
               </tr>
             </thead>
@@ -119,7 +120,7 @@ export class SchedulerView {
       "14:00 - 13:00"
     ];
 
-    const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"];
+    const days = ["الخميس", "الأربعاء", "الثلاثاء", "الإثنين", "الأحد"];
 
     timeSlots.forEach((slot, slotIndex) => {
       const tr = document.createElement('tr');
@@ -128,7 +129,7 @@ export class SchedulerView {
 
       let rowHtml = '';
 
-      // الأيام من الأحد (يمين) إلى الخميس (يسار)
+      // الأيام من الخميس (يمين) إلى الأحد (يسار)
       days.forEach((day, dayIndex) => {
         let matchedItem = filtered.find(item => (item.day === day && item.timeSlot === slot));
         
