@@ -4,9 +4,25 @@ export class SchedulerView {
     this.schedules = [];
     this.instructorsList = [];
     this.departmentsList = [];
-    this.selectedYear = 'الفرقة الأولى';
+    this.yearsList = [];
+    this.selectedYear = '';
     this.selectedDepartment = '';
     this.selectedInstructor = '';
+  }
+
+  // دالة ذكية للبحث عن أي عمود بغض النظر عن تسميته في الشيت
+  getVal(item, terms) {
+    if (!item) return '';
+    for (const k of Object.keys(item)) {
+      const lk = k.toLowerCase();
+      for (const t of terms) {
+        if (lk.includes(t.toLowerCase())) {
+          const val = item[k];
+          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
+        }
+      }
+    }
+    return '';
   }
 
   async mount(container) {
@@ -41,21 +57,18 @@ export class SchedulerView {
             </div>
           </div>
 
-          <!-- شريط الفلاتر المتكاملة والميكانيكية -->
+          <!-- شريط الفلاتر الميكانيكية بالكامل -->
           <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
             
-            <!-- فلتر الفرقة -->
+            <!-- زر الفرقة المربوط بالشيت -->
             <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">الفرقة</label>
-              <select id="filterYear" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.9rem; cursor: pointer;">
-                <option value="الفرقة الأولى">الفرقة الأولى</option>
-                <option value="الفرقة الثانية">الفرقة الثانية</option>
-                <option value="الفرقة الثالثة">الفرقة الثالثة</option>
-                <option value="الفرقة الرابعة">الفرقة الرابعة</option>
+              <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">🎓 الفرقة</label>
+              <select id="filterYear" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
+                <option value="">-- كل الفرق (عرض الكل) --</option>
               </select>
             </div>
 
-            <!-- زر/قائمة الأقسام والشعبة المستخرجة ميكانيكياً -->
+            <!-- زر الأقسام والشعبة المربوط بالشيت -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">📚 الأقسام</label>
               <select id="filterDepartment" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
@@ -63,7 +76,7 @@ export class SchedulerView {
               </select>
             </div>
 
-            <!-- زر/قائمة الدكاترة والمعيدين المستخرجة ميكانيكياً -->
+            <!-- زر الدكاترة والمعيدين المربوط بالشيت -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
               <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
@@ -129,29 +142,39 @@ export class SchedulerView {
       if (loadingEl) loadingEl.style.display = 'block';
 
       const data = await this.api.getData();
+      console.log("📥 البيانات المستلمة من الشيت:", data);
+      
       this.schedules = Array.isArray(data) ? data : (data.schedules || []);
       const rawInstructors = data.instructors || [];
 
       const instructorSet = new Set();
       const departmentSet = new Set();
+      const yearSet = new Set();
 
+      // استخراج الأسماء من شيت أعضاء هيئة التدريس
       rawInstructors.forEach(inst => {
-        const name = inst['اسم الدكتور / المعيد *'] || inst['اسم الدكتور / المعيد'] || inst.name || '';
-        if (name) instructorSet.add(name.toString().trim());
+        const name = this.getVal(inst, ['اسم', 'name', 'دكتور', 'معيد']);
+        if (name) instructorSet.add(name);
       });
 
+      // استخراج البيانات مباشرة من شيت المواد
       this.schedules.forEach(item => {
-        const dept = item['الشعبة / القسم'] || item['القسم'] || item.department || '';
-        if (dept) departmentSet.add(dept.toString().trim());
+        const yL = this.getVal(item, ['فرقة', 'year', 'level']);
+        if (yL) yearSet.add(yL);
 
-        const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
-        const ast = item['المعيدين / السكاشن'] || item.assistants || '';
-        if (doc) doc.toString().split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
-        if (ast) ast.toString().split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
+        const dept = this.getVal(item, ['قسم', 'شعبة', 'department', 'group']);
+        if (dept) departmentSet.add(dept);
+
+        const doc = this.getVal(item, ['دكتور', 'محاضر', 'doctor', 'تدريس']);
+        const ast = this.getVal(item, ['معيد', 'سكشن', 'assistant']);
+        
+        if (doc) doc.split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
+        if (ast) ast.split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
       });
 
-      this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
+      this.yearsList = Array.from(yearSet).filter(Boolean).sort();
       this.departmentsList = Array.from(departmentSet).filter(Boolean).sort();
+      this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
 
       this.populateDropdowns();
 
@@ -166,6 +189,19 @@ export class SchedulerView {
   }
 
   populateDropdowns() {
+    // تعبئة زر الفرقة
+    const yearSelect = document.getElementById('filterYear');
+    if (yearSelect) {
+      yearSelect.innerHTML = `<option value="">-- كل الفرق (عرض الكل) --</option>`;
+      this.yearsList.forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+      });
+    }
+
+    // تعبئة زر الأقسام
     const deptSelect = document.getElementById('filterDepartment');
     if (deptSelect) {
       deptSelect.innerHTML = `<option value="">-- كل الأقسام (عرض الكل) --</option>`;
@@ -177,6 +213,7 @@ export class SchedulerView {
       });
     }
 
+    // تعبئة زر الدكاترة والمعيدين
     const instSelect = document.getElementById('filterInstructor');
     if (instSelect) {
       instSelect.innerHTML = `<option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>`;
@@ -194,15 +231,16 @@ export class SchedulerView {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    // تصفية المواد ميكانيكياً بناءً على الاختيارات الحالية للثلاثة أزرار
     const filtered = this.schedules.filter(item => {
-      const yL = item['الفرقة *'] || item['الفرقة'] || item.yearLevel || '';
-      const dept = item['الشعبة / القسم'] || item['القسم'] || item.department || '';
-      const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
-      const ast = item['المعيدين / السكاشن'] || item.assistants || '';
+      const yL = this.getVal(item, ['فرقة', 'year', 'level']);
+      const dept = this.getVal(item, ['قسم', 'شعبة', 'department', 'group']);
+      const doc = this.getVal(item, ['دكتور', 'محاضر', 'doctor', 'تدريس']);
+      const ast = this.getVal(item, ['معيد', 'سكشن', 'assistant']);
 
-      const matchYear = !this.selectedYear || yL.toString().includes(this.selectedYear);
-      const matchDept = !this.selectedDepartment || dept.toString().includes(this.selectedDepartment);
-      const matchInst = !this.selectedInstructor || doc.toString().includes(this.selectedInstructor) || ast.toString().includes(this.selectedInstructor);
+      const matchYear = !this.selectedYear || yL.includes(this.selectedYear);
+      const matchDept = !this.selectedDepartment || dept.includes(this.selectedDepartment);
+      const matchInst = !this.selectedInstructor || doc.includes(this.selectedInstructor) || ast.includes(this.selectedInstructor);
 
       return matchYear && matchDept && matchInst;
     });
@@ -229,9 +267,9 @@ export class SchedulerView {
           const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
           
-          const subject = matchedItem['اسم المادة *'] || matchedItem['اسم المادة'] || matchedItem.subject || 'مادة دراسية';
-          const hall = matchedItem['نوع القاعة المطلوبة *'] || matchedItem['القاعة'] || matchedItem.hall || 'قاعة';
-          const doctor = isLecture ? (matchedItem['د. المحاضرة *'] || matchedItem['د. المحاضرة'] || matchedItem.doctor || 'غير محدد') : (matchedItem['المعيدين / السكاشن'] || matchedItem.assistants || 'غير محدد');
+          const subject = this.getVal(matchedItem, ['مادة', 'اسم', 'subject', 'course']) || 'مادة دراسية';
+          const hall = this.getVal(matchedItem, ['قاعة', 'مدرج', 'hall', 'room']) || 'قاعة';
+          const doctor = isLecture ? (this.getVal(matchedItem, ['دكتور', 'محاضر', 'doctor']) || 'غير محدد') : (this.getVal(matchedItem, ['معيد', 'سكشن', 'assistant']) || 'غير محدد');
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
