@@ -6,10 +6,13 @@ export class ScheduleApiClient {
   async getData() {
     try {
       const response = await fetch(this.baseUrl);
-      return await response.json();
+      const result = await response.json();
+      
+      // التأكد من إرجاع البيانات بالشكل الصحيح سواء كانت مصفوفة أو كائن يحتوي على الجداول
+      return result;
     } catch (error) {
-      console.error("API Error:", error);
-      return { status: "error", schedules: [], instructors: [], rooms: [], requests: [] };
+      console.error("خطأ في الاتصال بـ Google Sheets API:", error);
+      return { schedules: [], instructors: [], rooms: [], requests: [] };
     }
   }
 
@@ -21,7 +24,7 @@ export class ScheduleApiClient {
       });
       return await response.json();
     } catch (error) {
-      console.error("POST Error:", error);
+      console.error("خطأ في إرسال الطلب:", error);
       return { status: "error" };
     }
   }
