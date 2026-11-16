@@ -1,3 +1,4 @@
+console.log("🔥 SchedulerView الجديد تم تحميله بنجاح!");
 export class SchedulerView {
   constructor(api) {
     this.api = api;
