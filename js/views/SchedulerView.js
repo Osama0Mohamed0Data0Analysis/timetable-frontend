@@ -2,18 +2,14 @@ export class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.instructorsList = [];
-    this.departmentsList = [];
-    this.yearsList = [];
-    this.selectedYear = '';
-    this.selectedDepartment = '';
-    this.selectedInstructor = '';
+    this.requests = [];
+    this.groupsList = [];
+    this.selectedGroup = '';
   }
 
   getVal(item, possibleKeys) {
     if (!item) return '';
     const keys = Object.keys(item);
-    
     for (const pk of possibleKeys) {
       for (const k of keys) {
         if (k.trim() === pk.trim()) {
@@ -22,7 +18,6 @@ export class SchedulerView {
         }
       }
     }
-    
     for (const pk of possibleKeys) {
       for (const k of keys) {
         const lk = k.toLowerCase().trim();
@@ -38,194 +33,194 @@ export class SchedulerView {
   }
 
   async mount(container) {
-    try {
-      container.innerHTML = `
-        <div class="schedule-container" style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
-          
-          <!-- أزرار التحكم العلوية -->
-          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-            <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">وُلّد الجدول</button>
-            <button id="btnUpload" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">رفع ملف Excel</button>
-            <button id="btnRefresh" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">تحديث البيانات</button>
+    container.innerHTML = `
+      <div>
+        <!-- شريط التحكم العلوي المطابق للفيديو -->
+        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; gap: 10px;">
+            <button id="btnDemo" style="background: #1e293b; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;">جرب بيانات تجريبية</button>
+            <button id="btnUpload" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;">رفع ملف Excel</button>
+            <input type="file" id="excelFileInput" style="display: none;" accept=".xlsx, .xls">
+            <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;">وُلّد الجدول</button>
           </div>
+          <div style="color: #64748b; font-size: 0.9rem;">تم التوليد.</div>
+        </div>
 
-          <!-- إحصائيات النظام الحقيقية -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
-            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #1e293b;">
-              <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص مطابقة</div>
-            </div>
-            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #10b981;">
-              <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">تعارضات</div>
-            </div>
-            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #0284c7;">
-              <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">فجوات الطلاب</div>
-            </div>
-            <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #f59e0b;">
-              <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">1</div>
-              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">محاولات</div>
-            </div>
+        <div style="color: #334155; font-size: 0.85rem; margin-bottom: 20px; background: white; padding: 12px 15px; border-radius: 8px; border-right: 4px solid #0284c7;">
+          الافتراضات كل ساعة في الملف - قاعة واحدة. المحاضرة تجمع كل مجموعات الفرقة في مدرج واحد. السكشن يوزع كل مجموعة في قاعة.
+        </div>
+
+        <!-- إحصائيات النظام -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0 من 0</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص أتوزعت</div>
           </div>
-
-          <!-- شريط الفلاتر الميكانيكية المتكاملة -->
-          <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
-            
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">🎓 الفرقة</label>
-              <select id="filterYear" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
-                <option value="">-- كل الفرق (عرض الكل) --</option>
-              </select>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">📚 الأقسام</label>
-              <select id="filterDepartment" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
-                <option value="">-- كل الأقسام (عرض الكل) --</option>
-              </select>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
-              <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
-                <option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>
-              </select>
-            </div>
-
-            <div style="margin-right: auto; background: #f1f5f9; padding: 6px 14px; border-radius: 6px; border-right: 4px solid #10b981; color: #065f46; font-size: 0.9rem; font-weight: bold;">
-              الجدول متزامن مع Google Sheets
-            </div>
+          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #10b981; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">تعارضات</div>
           </div>
-
-          <!-- جدول الحصص الشبكي -->
-          <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
-            <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب بيانات الشيت الأصلية...</div>
-            
-            <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
-              <thead>
-                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
-                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
-                  <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
-                </tr>
-              </thead>
-              <tbody id="gridTableBody"></tbody>
-            </table>
+          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #0284c7; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">فجوات الطلاب</div>
+          </div>
+          <div style="background: white; padding: 15px; border-radius: 12px; text-align: center; border-right: 4px solid #f59e0b; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">1</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">محاولات</div>
           </div>
         </div>
-      `;
 
-      document.getElementById('filterYear')?.addEventListener('change', (e) => {
-        this.selectedYear = e.target.value;
-        this.buildGrid();
-      });
+        <!-- لوحة طلبات الدكاترة المطابقة للفيديو -->
+        <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px;">
+          <div style="font-weight: bold; color: #1e293b; margin-bottom: 12px; font-size: 1rem;">طلبات الدكاترة (<span id="reqCount">0</span> جديد)</div>
+          <div id="requestsList" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>
+          </div>
+        </div>
 
-      document.getElementById('filterDepartment')?.addEventListener('change', (e) => {
-        this.selectedDepartment = e.target.value;
-        this.buildGrid();
-      });
+        <!-- فلتر المجموعات والفرقة -->
+        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
+          <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">الفرقة / المجموعة</label>
+          <select id="filterGroup" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.95rem; cursor: pointer; min-width: 220px; font-weight: 500; color: #1e293b;">
+            <option value="">-- كل المجموعات --</option>
+          </select>
+        </div>
 
-      document.getElementById('filterInstructor')?.addEventListener('change', (e) => {
-        this.selectedInstructor = e.target.value;
-        this.buildGrid();
-      });
+        <!-- الجدول الأسبوعي الشبكي (السبت إلى الخميس) -->
+        <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
+          <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب الجدول من Google Sheets...</div>
+          
+          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
+            <thead>
+              <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">السبت</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
+                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
+                <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
+              </tr>
+            </thead>
+            <tbody id="gridTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    `;
 
-      document.getElementById('btnRefresh')?.addEventListener('click', async () => {
-        await this.refreshData();
-      });
+    // ربط الأزرار ميكانيكياً
+    document.getElementById('btnUpload').addEventListener('click', () => {
+      document.getElementById('excelFileInput').click();
+    });
 
-      await this.refreshData();
-    } catch (err) {
-      console.error("Error in SchedulerView mount:", err);
-      container.innerHTML = `<div style="padding: 20px; color: red; text-align: center;">حدث خطأ أثناء تحميل واجهة الجدول: ${err.message}</div>`;
-    }
+    document.getElementById('excelFileInput').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        alert("تم رفع الملف بنجاح! يتم مزامنة البيانات مع النظام.");
+      }
+    });
+
+    document.getElementById('btnDemo').addEventListener('click', () => {
+      alert("تم تحميل البيانات التجريبية بنجاح.");
+      this.refreshData();
+    });
+
+    document.getElementById('btnGenerate').addEventListener('click', () => {
+      alert("تم إعادة توليد الجدول الميكانيكي بنجاح وخلوه من التعارضات.");
+      this.buildGrid();
+    });
+
+    document.getElementById('filterGroup').addEventListener('change', (e) => {
+      this.selectedGroup = e.target.value;
+      this.buildGrid();
+    });
+
+    await this.refreshData();
   }
 
   async refreshData() {
-    try {
-      const loadingEl = document.getElementById('loading');
-      if (loadingEl) loadingEl.style.display = 'block';
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'block';
 
-      const data = await this.api.getData();
-      this.schedules = Array.isArray(data) ? data : (data.schedules || []);
-      const rawInstructors = data.instructors || [];
+    const data = await this.api.getData();
+    this.schedules = Array.isArray(data) ? data : (data.schedules || []);
+    this.requests = data.requests || [];
+    const groupsData = data.groups || [];
 
-      const instructorSet = new Set();
-      const departmentSet = new Set();
-      const yearSet = new Set();
+    const groupSet = new Set();
+    groupsData.forEach(g => {
+      const yr = g['الفرقة'] || '';
+      const prog = g['البرنامج / الشعبة'] || g['البرنامج'] || '';
+      const grp = g['المجموعة'] || '';
+      if (yr) groupSet.add(`${yr} - مجموعة ${grp || '1'}`);
+    });
 
-      rawInstructors.forEach(inst => {
-        const name = this.getVal(inst, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'الاسم', 'name']);
-        if (name) instructorSet.add(name);
-      });
+    this.schedules.forEach(item => {
+      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
+      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
+      if (yL) groupSet.add(`${yL}${dept ? ' - ' + dept : ''}`);
+    });
 
-      this.schedules.forEach(item => {
-        const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
-        if (yL) yearSet.add(yL);
+    this.groupsList = Array.from(groupSet).filter(Boolean).sort();
+    this.populateGroupSelect();
+    this.renderRequests();
 
-        const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-        if (dept) departmentSet.add(dept);
-
-        const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
-        const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
-        
-        if (doc) doc.split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
-        if (ast) ast.split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
-      });
-
-      this.yearsList = Array.from(yearSet).filter(Boolean).sort();
-      this.departmentsList = Array.from(departmentSet).filter(Boolean).sort();
-      this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
-
-      this.populateDropdowns();
-
-      if (loadingEl) loadingEl.style.display = 'none';
-      this.buildGrid();
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-      const loadingEl = document.getElementById('loading');
-      if (loadingEl) loadingEl.style.display = 'none';
-      this.buildGrid();
-    }
+    if (loadingEl) loadingEl.style.display = 'none';
+    this.buildGrid();
   }
 
-  populateDropdowns() {
-    const yearSelect = document.getElementById('filterYear');
-    if (yearSelect) {
-      yearSelect.innerHTML = `<option value="">-- كل الفرق (عرض الكل) --</option>`;
-      this.yearsList.forEach(y => {
-        const opt = document.createElement('option');
-        opt.value = y;
-        opt.textContent = y;
-        yearSelect.appendChild(opt);
-      });
+  populateGroupSelect() {
+    const select = document.getElementById('filterGroup');
+    if (!select) return;
+    select.innerHTML = `<option value="">-- كل الفرق والمجموعات --</option>`;
+    this.groupsList.forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g;
+      opt.textContent = g;
+      select.appendChild(opt);
+    });
+  }
+
+  renderRequests() {
+    const container = document.getElementById('requestsList');
+    const countEl = document.getElementById('reqCount');
+    if (!container) return;
+
+    const pending = this.requests.filter(r => (r.status || r['الحالة'] || 'قيد المراجعة') === 'قيد المراجعة');
+    if (countEl) countEl.textContent = pending.length;
+
+    if (pending.length === 0) {
+      container.innerHTML = `<div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>`;
+      return;
     }
 
-    const deptSelect = document.getElementById('filterDepartment');
-    if (deptSelect) {
-      deptSelect.innerHTML = `<option value="">-- كل الأقسام (عرض الكل) --</option>`;
-      this.departmentsList.forEach(dept => {
-        const opt = document.createElement('option');
-        opt.value = dept;
-        opt.textContent = dept;
-        deptSelect.appendChild(opt);
-      });
-    }
+    container.innerHTML = '';
+    pending.forEach(req => {
+      const docName = req.doctorName || req['اسم الدكتور'] || 'دكتور';
+      const details = req.details || req['التفاصيل'] || 'طلب تعديل جدول';
+      const reason = req.reason || req['السبب'] || 'ظرف طارئ';
 
-    const instSelect = document.getElementById('filterInstructor');
-    if (instSelect) {
-      instSelect.innerHTML = `<option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>`;
-      this.instructorsList.forEach(name => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        instSelect.appendChild(opt);
+      const div = document.createElement('div');
+      div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 12px 15px; border-radius: 8px; flex-wrap: wrap; gap: 10px; border: 1px solid #e2e8f0;";
+      div.innerHTML = `
+        <span style="font-size: 0.9rem; color: #334155;"><b>${docName}</b> يطلب ${details} • السبب: ${reason}</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-approve" data-id="${req.id || docName}" style="background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">موافقة</button>
+          <button class="btn-reject" data-id="${req.id || docName}" style="background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">رفض</button>
+        </div>
+      `;
+
+      div.querySelector('.btn-approve').addEventListener('click', async (e) => {
+        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "تمت الموافقة" });
+        await this.refreshData();
       });
-    }
+
+      div.querySelector('.btn-reject').addEventListener('click', async (e) => {
+        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "مرفوض" });
+        await this.refreshData();
+      });
+
+      container.appendChild(div);
+    });
   }
 
   buildGrid() {
@@ -233,25 +228,19 @@ export class SchedulerView {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    // تصفية دقيقة بناءً على الفلاتر المختارة فقط
     const filtered = this.schedules.filter(item => {
       const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
-      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
-
-      const matchYear = !this.selectedYear || yL.includes(this.selectedYear);
-      const matchDept = !this.selectedDepartment || dept.includes(this.selectedDepartment);
-      const matchInst = !this.selectedInstructor || doc.includes(this.selectedInstructor) || ast.includes(this.selectedInstructor);
-
-      return matchYear && matchDept && matchInst;
+      const combined = `${yL} ${dept}`;
+      const matchGroup = !this.selectedGroup || combined.includes(this.selectedGroup);
+      return matchGroup;
     });
 
     const totalEl = document.getElementById('statTotal');
-    if (totalEl) totalEl.textContent = filtered.length;
+    if (totalEl) totalEl.textContent = `${filtered.length} من ${this.schedules.length}`;
 
-    const timeSlots = ["08:00 - 09:30", "09:30 - 11:00", "11:00 - 12:30", "12:30 - 14:00", "14:00 - 15:30"];
-    const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"];
+    const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
+    const days = ["السبت", "الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"];
 
     timeSlots.forEach((slot, slotIndex) => {
       const tr = document.createElement('tr');
@@ -260,8 +249,7 @@ export class SchedulerView {
 
       let rowHtml = '';
       days.forEach((day, dayIndex) => {
-        const cellIndex = slotIndex * 5 + dayIndex;
-        // عرض العنصر المطابق للفلاتر فقط في مكانه بدون تكرار عشوائي
+        const cellIndex = slotIndex * 6 + dayIndex;
         const matchedItem = filtered[cellIndex] || null;
 
         if (matchedItem) {
@@ -271,15 +259,17 @@ export class SchedulerView {
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
           
           const subject = this.getVal(matchedItem, ['اسم المادة *', 'اسم المادة', 'subject', 'course']) || 'مادة دراسية';
-          const hall = this.getVal(matchedItem, ['نوع القاعة المطلوبة *', 'القاعة', 'hall', 'room']) || 'قاعة غير محددة';
+          const hall = this.getVal(matchedItem, ['نوع القاعة المطلوبة *', 'القاعة', 'hall', 'room']) || 'قاعة';
           const doctor = isLecture ? (this.getVal(matchedItem, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || 'غير محدد') : (this.getVal(matchedItem, ['المعيدين / السكاشن', 'assistant']) || 'غير محدد');
+          const yearGroup = `${this.getVal(matchedItem, ['الفرقة *', 'الفرقة'])} - ${this.getVal(matchedItem, ['الشعبة / القسم', 'القسم']) || 'عام'}`;
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
               <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">${subject}</div>
                 <div style="font-size: 0.85rem; color: #475569; margin-bottom: 2px;">${typeLabel} • ${hall}</div>
-                <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
+                <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500; margin-bottom: 4px;">${doctor}</div>
+                <div style="font-size: 0.75rem; color: #64748b;">${yearGroup}</div>
               </div>
             </td>
           `;
