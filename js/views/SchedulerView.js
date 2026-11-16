@@ -10,12 +10,10 @@ export class SchedulerView {
     this.selectedInstructor = '';
   }
 
-  // دالة دقيقة جداً لجلب القيم بالتطابق التام والجزئي الصحيح مع أعمدة الشيت
   getVal(item, possibleKeys) {
     if (!item) return '';
     const keys = Object.keys(item);
     
-    // 1. تطابق تام أولاً
     for (const pk of possibleKeys) {
       for (const k of keys) {
         if (k.trim() === pk.trim()) {
@@ -25,7 +23,6 @@ export class SchedulerView {
       }
     }
     
-    // 2. تطابق جزئي مع تجنب قراءة "كود المادة" عند البحث عن اسم المادة
     for (const pk of possibleKeys) {
       for (const k of keys) {
         const lk = k.toLowerCase().trim();
@@ -56,7 +53,7 @@ export class SchedulerView {
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
             <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #1e293b;">
               <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
-              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص أتوزعت</div>
+              <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص مطابقة</div>
             </div>
             <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #10b981;">
               <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
@@ -72,7 +69,7 @@ export class SchedulerView {
             </div>
           </div>
 
-          <!-- شريط الفلاتر الميكانيكية -->
+          <!-- شريط الفلاتر الميكانيكية المتكاملة -->
           <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
             
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -97,7 +94,7 @@ export class SchedulerView {
             </div>
 
             <div style="margin-right: auto; background: #f1f5f9; padding: 6px 14px; border-radius: 6px; border-right: 4px solid #10b981; color: #065f46; font-size: 0.9rem; font-weight: bold;">
-              جدولك محدث، متاح
+              الجدول متزامن مع Google Sheets
             </div>
           </div>
 
@@ -236,6 +233,7 @@ export class SchedulerView {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    // تصفية دقيقة بناءً على الفلاتر المختارة فقط
     const filtered = this.schedules.filter(item => {
       const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
@@ -250,7 +248,7 @@ export class SchedulerView {
     });
 
     const totalEl = document.getElementById('statTotal');
-    if (totalEl) totalEl.textContent = filtered.length > 0 ? filtered.length : this.schedules.length;
+    if (totalEl) totalEl.textContent = filtered.length;
 
     const timeSlots = ["08:00 - 09:30", "09:30 - 11:00", "11:00 - 12:30", "12:30 - 14:00", "14:00 - 15:30"];
     const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"];
@@ -262,8 +260,9 @@ export class SchedulerView {
 
       let rowHtml = '';
       days.forEach((day, dayIndex) => {
-        const dataPool = filtered.length > 0 ? filtered : this.schedules;
-        const matchedItem = dataPool.length > 0 ? dataPool[(slotIndex * 5 + dayIndex) % dataPool.length] : null;
+        const cellIndex = slotIndex * 5 + dayIndex;
+        // عرض العنصر المطابق للفلاتر فقط في مكانه بدون تكرار عشوائي
+        const matchedItem = filtered[cellIndex] || null;
 
         if (matchedItem) {
           const isLecture = slotIndex % 2 === 0;
@@ -271,7 +270,6 @@ export class SchedulerView {
           const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
           
-          // سحب اسم المادة الحقيقي (وليس كود المادة)
           const subject = this.getVal(matchedItem, ['اسم المادة *', 'اسم المادة', 'subject', 'course']) || 'مادة دراسية';
           const hall = this.getVal(matchedItem, ['نوع القاعة المطلوبة *', 'القاعة', 'hall', 'room']) || 'قاعة غير محددة';
           const doctor = isLecture ? (this.getVal(matchedItem, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || 'غير محدد') : (this.getVal(matchedItem, ['المعيدين / السكاشن', 'assistant']) || 'غير محدد');
