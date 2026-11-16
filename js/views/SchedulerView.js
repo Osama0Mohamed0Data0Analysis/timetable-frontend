@@ -10,13 +10,29 @@ export class SchedulerView {
     this.selectedInstructor = '';
   }
 
-  // دالة ذكية للبحث عن أي عمود بغض النظر عن تسميته في الشيت
-  getVal(item, terms) {
+  // دالة دقيقة جداً لجلب القيم من الشيت بدون التباس الأعمدة
+  getVal(item, exactKeys, includeKeys) {
     if (!item) return '';
-    for (const k of Object.keys(item)) {
-      const lk = k.toLowerCase();
-      for (const t of terms) {
-        if (lk.includes(t.toLowerCase())) {
+    const keys = Object.keys(item);
+
+    // 1. البحث بالتطابق التام أولاً
+    for (const k of keys) {
+      const lk = k.toLowerCase().trim();
+      for (const ek of exactKeys) {
+        if (lk === ek.toLowerCase()) {
+          const val = item[k];
+          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
+        }
+      }
+    }
+
+    // 2. البحث الجزئي مع استبعاد الأعمدة الخطأ (مثل تجنب كود المادة عند البحث عن الاسم)
+    for (const k of keys) {
+      const lk = k.toLowerCase().trim();
+      if (lk.includes('كود') && exactKeys.some(e => e.includes('مادة'))) continue;
+
+      for (const ik of includeKeys) {
+        if (lk.includes(ik.toLowerCase())) {
           const val = item[k];
           if (val !== undefined && val !== null && val !== '') return val.toString().trim();
         }
@@ -57,10 +73,9 @@ export class SchedulerView {
             </div>
           </div>
 
-          <!-- شريط الفلاتر الميكانيكية بالكامل -->
+          <!-- شريط الفلاتر الميكانيكية -->
           <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
             
-            <!-- زر الفرقة المربوط بالشيت -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">🎓 الفرقة</label>
               <select id="filterYear" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
@@ -68,7 +83,6 @@ export class SchedulerView {
               </select>
             </div>
 
-            <!-- زر الأقسام والشعبة المربوط بالشيت -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">📚 الأقسام</label>
               <select id="filterDepartment" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
@@ -76,7 +90,6 @@ export class SchedulerView {
               </select>
             </div>
 
-            <!-- زر الدكاترة والمعيدين المربوط بالشيت -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
               <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
@@ -151,22 +164,20 @@ export class SchedulerView {
       const departmentSet = new Set();
       const yearSet = new Set();
 
-      // استخراج الأسماء من شيت أعضاء هيئة التدريس
       rawInstructors.forEach(inst => {
-        const name = this.getVal(inst, ['اسم', 'name', 'دكتور', 'معيد']);
+        const name = this.getVal(inst, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name'], ['اسم', 'دكتور', 'معيد']);
         if (name) instructorSet.add(name);
       });
 
-      // استخراج البيانات مباشرة من شيت المواد
       this.schedules.forEach(item => {
-        const yL = this.getVal(item, ['فرقة', 'year', 'level']);
+        const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel'], ['فرقة']);
         if (yL) yearSet.add(yL);
 
-        const dept = this.getVal(item, ['قسم', 'شعبة', 'department', 'group']);
+        const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department'], ['قسم', 'شعبة']);
         if (dept) departmentSet.add(dept);
 
-        const doc = this.getVal(item, ['دكتور', 'محاضر', 'doctor', 'تدريس']);
-        const ast = this.getVal(item, ['معيد', 'سكشن', 'assistant']);
+        const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'], ['د.', 'محاضر', 'دكتور']);
+        const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant'], ['معيد', 'سكشن']);
         
         if (doc) doc.split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
         if (ast) ast.split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
@@ -189,7 +200,6 @@ export class SchedulerView {
   }
 
   populateDropdowns() {
-    // تعبئة زر الفرقة
     const yearSelect = document.getElementById('filterYear');
     if (yearSelect) {
       yearSelect.innerHTML = `<option value="">-- كل الفرق (عرض الكل) --</option>`;
@@ -201,7 +211,6 @@ export class SchedulerView {
       });
     }
 
-    // تعبئة زر الأقسام
     const deptSelect = document.getElementById('filterDepartment');
     if (deptSelect) {
       deptSelect.innerHTML = `<option value="">-- كل الأقسام (عرض الكل) --</option>`;
@@ -213,7 +222,6 @@ export class SchedulerView {
       });
     }
 
-    // تعبئة زر الدكاترة والمعيدين
     const instSelect = document.getElementById('filterInstructor');
     if (instSelect) {
       instSelect.innerHTML = `<option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>`;
@@ -231,12 +239,11 @@ export class SchedulerView {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    // تصفية المواد ميكانيكياً بناءً على الاختيارات الحالية للثلاثة أزرار
     const filtered = this.schedules.filter(item => {
-      const yL = this.getVal(item, ['فرقة', 'year', 'level']);
-      const dept = this.getVal(item, ['قسم', 'شعبة', 'department', 'group']);
-      const doc = this.getVal(item, ['دكتور', 'محاضر', 'doctor', 'تدريس']);
-      const ast = this.getVal(item, ['معيد', 'سكشن', 'assistant']);
+      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel'], ['فرقة']);
+      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department'], ['قسم', 'شعبة']);
+      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'], ['د.', 'محاضر', 'دكتور']);
+      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant'], ['معيد', 'سكشن']);
 
       const matchYear = !this.selectedYear || yL.includes(this.selectedYear);
       const matchDept = !this.selectedDepartment || dept.includes(this.selectedDepartment);
@@ -267,9 +274,12 @@ export class SchedulerView {
           const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
           
-          const subject = this.getVal(matchedItem, ['مادة', 'اسم', 'subject', 'course']) || 'مادة دراسية';
-          const hall = this.getVal(matchedItem, ['قاعة', 'مدرج', 'hall', 'room']) || 'قاعة';
-          const doctor = isLecture ? (this.getVal(matchedItem, ['دكتور', 'محاضر', 'doctor']) || 'غير محدد') : (this.getVal(matchedItem, ['معيد', 'سكشن', 'assistant']) || 'غير محدد');
+          // جلب اسم المادة الصحيح متجنباً أي أكواد
+          const subject = this.getVal(matchedItem, ['اسم المادة *', 'اسم المادة', 'subject', 'course'], ['اسم المادة', 'المادة']) || 'مادة دراسية';
+          // جلب القاعة الصحيحة
+          const hall = this.getVal(matchedItem, ['نوع القاعة المطلوبة *', 'القاعة', 'hall', 'room'], ['قاعة', 'مدرج']) || 'قاعة غير محددة';
+          // جلب اسم الدكتور أو المعيد الصحيح
+          const doctor = isLecture ? (this.getVal(matchedItem, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'], ['د.', 'محاضر', 'دكتور']) || 'غير محدد') : (this.getVal(matchedItem, ['المعيدين / السكاشن', 'assistant'], ['معيد', 'سكشن']) || 'غير محدد');
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
