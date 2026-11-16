@@ -1,16 +1,79 @@
-export class StudentView {
+export class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
+    this.instructorsList = [];
+    this.selectedYear = 'الفرقة الأولى';
+    this.selectedInstructor = '';
   }
 
   async mount(container) {
     container.innerHTML = `
-      <div style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
-        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; font-weight: bold; color: #1e293b;">
-          جدولك محدث، متاح للطلاب (الفرقة الأولى - مجموعة 1)
+      <div class="schedule-container" style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
+        
+        <!-- أزرار التحكم العلوية -->
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+          <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">وُلّد الجدول</button>
+          <button id="btnUpload" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">رفع ملف Excel</button>
+          <button id="btnRefresh" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">تحديث البيانات</button>
         </div>
+
+        <!-- إحصائيات النظام الحقيقية -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
+          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #1e293b;">
+            <div id="statTotal" style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">حصص أتوزعت</div>
+          </div>
+          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #10b981;">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">تعارضات</div>
+          </div>
+          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #0284c7;">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">0</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">فجوات الطلاب</div>
+          </div>
+          <div style="background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-right: 4px solid #f59e0b;">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b;">1</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">محاولات</div>
+          </div>
+        </div>
+
+        <!-- لوحة طلبات الدكاترة الميكانيكية -->
+        <div style="background: white; border-radius: 12px; padding: 15px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px;">
+          <div style="font-weight: bold; color: #1e293b; margin-bottom: 12px; font-size: 1rem;">طلبات الدكاترة (<span id="reqCount">0</span> جديد)</div>
+          <div id="requestsList" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>
+          </div>
+        </div>
+
+        <!-- شريط الفلاتر وزر الدكاترة والمعيدين -->
+        <div style="background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">الفرقة</label>
+            <select id="filterYear" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 0.9rem; cursor: pointer;">
+              <option value="الفرقة الأولى">الفرقة الأولى</option>
+              <option value="الفرقة الثانية">الفرقة الثانية</option>
+              <option value="الفرقة الثالثة">الفرقة الثالثة</option>
+              <option value="الفرقة الرابعة">الفرقة الرابعة</option>
+            </select>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: bold; color: #1e293b; font-size: 0.9rem; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">👨‍🏫 الدكاترة والمعيدين</label>
+            <select id="filterInstructor" style="padding: 8px 12px; border: 1px solid #0284c7; border-radius: 6px; background: #f0fdf4; font-size: 0.9rem; cursor: pointer; font-weight: 500; color: #0369a1;">
+              <option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>
+            </select>
+          </div>
+
+          <div style="margin-right: auto; background: #f1f5f9; padding: 6px 14px; border-radius: 6px; border-right: 4px solid #10b981; color: #065f46; font-size: 0.9rem; font-weight: bold;">
+            جدولك محدث، متاح
+          </div>
+        </div>
+
+        <!-- جدول الحصص الشبكي (من الأحد إلى الخميس + الوقت يسار) -->
         <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
+          <div id="loading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب بيانات الشيت الأصلية...</div>
+          
           <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
@@ -22,21 +85,139 @@ export class StudentView {
                 <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
               </tr>
             </thead>
-            <tbody id="studentGridBody"></tbody>
+            <tbody id="gridTableBody"></tbody>
           </table>
         </div>
       </div>
     `;
 
-    const data = await this.api.getData();
-    this.schedules = data.schedules || [];
-    this.buildStudentGrid();
+    document.getElementById('filterYear')?.addEventListener('change', (e) => {
+      this.selectedYear = e.target.value;
+      this.buildGrid();
+    });
+
+    document.getElementById('filterInstructor')?.addEventListener('change', (e) => {
+      this.selectedInstructor = e.target.value;
+      this.buildGrid();
+    });
+
+    document.getElementById('btnRefresh')?.addEventListener('click', async () => {
+      await this.refreshData();
+    });
+
+    await this.refreshData();
   }
 
-  buildStudentGrid() {
-    const tbody = document.getElementById('studentGridBody');
+  async refreshData() {
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'block';
+
+    const data = await this.api.getData();
+    this.schedules = data.schedules || [];
+    this.requests = data.requests || [];
+    const rawInstructors = data.instructors || [];
+
+    const instructorSet = new Set();
+
+    // استخراج الأسماء من شيت أعضاء هيئة التدريس
+    rawInstructors.forEach(inst => {
+      const name = inst['اسم الدكتور / المعيد *'] || inst['اسم الدكتور / المعيد'] || inst.name || '';
+      if (name) instructorSet.add(name.toString().trim());
+    });
+
+    // استخراج الأسماء من شيت المواد (الدكاترة والمعيدين)
+    this.schedules.forEach(item => {
+      const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
+      const ast = item['المعيدين / السكاشن'] || item.assistants || '';
+      if (doc) {
+        doc.toString().split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
+      }
+      if (ast) {
+        ast.toString().split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
+      }
+    });
+
+    this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
+    this.populateInstructorSelect();
+    this.renderRequests();
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    this.buildGrid();
+  }
+
+  populateInstructorSelect() {
+    const select = document.getElementById('filterInstructor');
+    if (!select) return;
+    
+    select.innerHTML = `<option value="">-- كل الدكاترة والمعيدين (عرض الكل) --</option>`;
+    this.instructorsList.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+  }
+
+  renderRequests() {
+    const container = document.getElementById('requestsList');
+    const countEl = document.getElementById('reqCount');
+    if (!container) return;
+
+    const pending = this.requests.filter(r => (r.status || r['الحالة'] || 'قيد المراجعة') === 'قيد المراجعة');
+    if (countEl) countEl.textContent = pending.length;
+
+    if (pending.length === 0) {
+      container.innerHTML = `<div style="color: #64748b; font-size: 0.9rem;">لا توجد طلبات معلقة حالياً.</div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    pending.forEach(req => {
+      const docName = req.doctorName || req['اسم الدكتور'] || 'دكتور';
+      const details = req.details || req['التفاصيل'] || 'طلب تعديل جدول';
+      const reason = req.reason || req['السبب'] || 'ظرف طارئ';
+
+      const div = document.createElement('div');
+      div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 12px 15px; border-radius: 8px; flex-wrap: wrap; gap: 10px; border: 1px solid #e2e8f0;";
+      div.innerHTML = `
+        <span style="font-size: 0.9rem; color: #334155;">${docName} يطلب ${details} • السبب: ${reason}</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-approve" data-id="${req.id || docName}" style="background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">موافقة</button>
+          <button class="btn-reject" data-id="${req.id || docName}" style="background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">رفض</button>
+        </div>
+      `;
+
+      div.querySelector('.btn-approve').addEventListener('click', async (e) => {
+        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "تمت الموافقة" });
+        await this.refreshData();
+      });
+
+      div.querySelector('.btn-reject').addEventListener('click', async (e) => {
+        await this.api.sendAction({ action: "updateRequestStatus", id: e.target.dataset.id, status: "مرفوض" });
+        await this.refreshData();
+      });
+
+      container.appendChild(div);
+    });
+  }
+
+  buildGrid() {
+    const tbody = document.getElementById('gridTableBody');
     if (!tbody) return;
     tbody.innerHTML = '';
+
+    const filtered = this.schedules.filter(item => {
+      const yL = item['الفرقة *'] || item['الفرقة'] || item.yearLevel || '';
+      const doc = item['د. المحاضرة *'] || item['د. المحاضرة'] || item.doctor || '';
+      const ast = item['المعيدين / السكاشن'] || item.assistants || '';
+
+      const matchYear = !this.selectedYear || yL.toString().includes(this.selectedYear);
+      const matchInst = !this.selectedInstructor || doc.toString().includes(this.selectedInstructor) || ast.toString().includes(this.selectedInstructor);
+      return matchYear && matchInst;
+    });
+
+    const totalEl = document.getElementById('statTotal');
+    if (totalEl) totalEl.textContent = filtered.length > 0 ? filtered.length : this.schedules.length;
 
     const timeSlots = ["08:00 - 09:30", "09:30 - 11:00", "11:00 - 12:30", "12:30 - 14:00", "14:00 - 15:30"];
     const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"];
@@ -48,17 +229,24 @@ export class StudentView {
 
       let rowHtml = '';
       days.forEach((day, dayIndex) => {
-        const matchedItem = this.schedules[(slotIndex * 5 + dayIndex) % this.schedules.length];
+        const dataPool = filtered.length > 0 ? filtered : this.schedules;
+        const matchedItem = dataPool[(slotIndex * 5 + dayIndex) % dataPool.length];
+
         if (matchedItem) {
-          const subject = matchedItem['اسم المادة *'] || matchedItem['اسم المادة'] || 'مادة دراسية';
-          const hall = matchedItem['نوع القاعة المطلوبة *'] || matchedItem['القاعة'] || 'قاعة';
-          const doctor = matchedItem['د. المحاضرة *'] || matchedItem['د. المحاضرة'] || 'د. طارق حسن';
+          const isLecture = slotIndex % 2 === 0;
+          const bgCard = isLecture ? '#e2e8f0' : '#fef3c7'; 
+          const borderCard = isLecture ? '#cbd5e1' : '#fcd34d';
+          const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
+          
+          const subject = matchedItem['اسم المادة *'] || matchedItem['اسم المادة'] || matchedItem.subject || 'مادة دراسية';
+          const hall = matchedItem['نوع القاعة المطلوبة *'] || matchedItem['القاعة'] || matchedItem.hall || 'قاعة';
+          const doctor = isLecture ? (matchedItem['د. المحاضرة *'] || matchedItem['د. المحاضرة'] || matchedItem.doctor || 'غير محدد') : (matchedItem['المعيدين / السكاشن'] || matchedItem.assistants || 'غير محدد');
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">${subject}</div>
-                <div style="font-size: 0.85rem; color: #475569; margin-bottom: 2px;">محاضرة • ${hall}</div>
+                <div style="font-size: 0.85rem; color: #475569; margin-bottom: 2px;">${typeLabel} • ${hall}</div>
                 <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
               </div>
             </td>
