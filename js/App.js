@@ -1,38 +1,53 @@
-import { h } from './core/dom.js';
-import { ROLES } from './config.js';
-import { SchedulerView } from './views/SchedulerView.js';
-import { DoctorView } from './views/DoctorView.js';
-import { StudentView } from './views/StudentView.js';
-
-const VIEWS = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
-
-export class App {
-  constructor(root, api) {
-    this.root = root;
-    this.api = api;
-    this.role = 'scheduler';
-    this.views = {};
+export class ScheduleApiClient {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
   }
 
-  async start() {
-    this.body = h('div');
-    this.switcher = h('div', { class: 'row' });
-    this.root.replaceChildren(
-      h('h1', {}, 'مولّد الجداول الأكاديمية'),
-      h('p', { class: 'tagline' }, 'نموذج أولي: يقرأ بيانات الكلية، ويوزّع المحاضرات والسكاشن من غير تعارضات.'),
-      this.switcher,
-      h('p', { class: 'hint' }, 'وضع تجريبي: في النظام الحقيقي كل شخص بيدخل بحسابه، والنظام بيحدد دوره وبيفتح له شاشته بس.'),
-      this.body
-    );
-    await this.show(this.role);
+  async getSchedules() {
+    try {
+      const response = await fetch(`${this.apiUrl}?action=getSchedules`);
+      const result = await response.json();
+      if (result.status === 'success') return result.data;
+      return [];
+    } catch (error) {
+      console.error('Error fetching schedules:', error);
+      return [];
+    }
   }
 
-  async show(role) {
-    this.role = role;
-    this.switcher.replaceChildren(...ROLES.map(([key, label]) =>
-      h('button', { class: `btn ${key === role ? 'on' : ''}`, onClick: () => this.show(key) }, label)
-    ));
-    this.views[role] ??= new VIEWS[role](this.api);
-    await this.views[role].mount(this.body);
+  async getInstructors() {
+    try {
+      const response = await fetch(`${this.apiUrl}?action=getInstructors`);
+      const result = await response.json();
+      if (result.status === 'success') return result.data;
+      return [];
+    } catch (error) {
+      console.error('Error fetching instructors:', error);
+      return [];
+    }
+  }
+
+  async getRequests() {
+    try {
+      const response = await fetch(`${this.apiUrl}?action=getRequests`);
+      const result = await response.json();
+      if (result.status === 'success') return result.data;
+      return [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async sendDoctorRequest(requestData) {
+    try {
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'addRequest', data: requestData })
+      });
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
   }
 }
