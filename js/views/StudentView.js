@@ -32,59 +32,78 @@ export class StudentView {
   }
 
   async mount(container) {
-    container.innerHTML = `
-      <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px;">
-        <h3 style="color: #1e293b; margin-top: 0;">بوابة طالب الكلية</h3>
-        <p style="color: #64748b; font-size: 0.9rem;">اختر فرقتك الدراسية ومجموعتك لاستعراض الجدول الأسبوعي الخاص بك.</p>
-        
-        <div style="display: flex; gap: 15px; align-items: center; margin-top: 20px; flex-wrap: wrap;">
-          <label style="font-weight: bold; color: #334155;">اختر الفرقة / المجموعة:</label>
-          <select id="studentGroupSelect" style="padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; min-width: 250px; background: #fff; cursor: pointer; font-weight: 500; color: #0369a1;">
-            <option value="">-- اختر المجموعة --</option>
-          </select>
+    try {
+      container.innerHTML = `
+        <div style="padding: 20px; direction: rtl; text-align: right; background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif;">
+          <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            <h3 style="color: #1e293b; margin-top: 0;">بوابة طالب الكلية</h3>
+            <p style="color: #64748b; font-size: 0.9rem;">اختر فرقتك الدراسية ومجموعتك لاستعراض الجدول الأسبوعي الخاص بك من Google Sheets.</p>
+            
+            <div style="display: flex; gap: 15px; align-items: center; margin-top: 20px; flex-wrap: wrap;">
+              <label style="font-weight: bold; color: #334155;">اختر الفرقة / المجموعة:</label>
+              <select id="studentGroupSelect" style="padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; min-width: 250px; background: #fff; cursor: pointer; font-weight: 500; color: #0369a1;">
+                <option value="">-- اختر المجموعة --</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- جدول الطالب الشبكي -->
+          <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
+            <div id="studentLoading" style="color: #0284c7; margin-bottom: 15px; font-weight: bold; text-align: center;">جاري جلب جدول الطالب من Google Sheets...</div>
+            <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
+              <thead>
+                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">السبت</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
+                  <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
+                  <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
+                </tr>
+              </thead>
+              <tbody id="studentGridBody"></tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      `;
 
-      <!-- جدول الطالب الشبكي -->
-      <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
-          <thead>
-            <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-              <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">السبت</th>
-              <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-              <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-              <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-              <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
-              <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
-              <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
-            </tr>
-          </thead>
-          <tbody id="studentGridBody"></tbody>
-        </table>
-      </div>
-    `;
+      document.getElementById('studentGroupSelect').addEventListener('change', (e) => {
+        this.selectedGroup = e.target.value;
+        this.buildStudentGrid();
+      });
 
-    document.getElementById('studentGroupSelect').addEventListener('change', (e) => {
-      this.selectedGroup = e.target.value;
-      this.buildStudentGrid();
-    });
-
-    await this.refreshData();
+      await this.refreshData();
+    } catch (err) {
+      console.error("Error mounting StudentView:", err);
+      container.innerHTML = `<div style="padding: 20px; color: red; text-align: center;">حدث خطأ أثناء تحميل صفحة الطالب: ${err.message}</div>`;
+    }
   }
 
   async refreshData() {
-    const data = await this.api.getData();
-    this.schedules = Array.isArray(data) ? data : (data.schedules || []);
+    try {
+      const loadingEl = document.getElementById('studentLoading');
+      if (loadingEl) loadingEl.style.display = 'block';
 
-    const groupSet = new Set();
-    this.schedules.forEach(item => {
-      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
-      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-      if (yL) groupSet.add(`${yL}${dept ? ' - ' + dept : ''}`);
-    });
+      const data = await this.api.getData();
+      this.schedules = Array.isArray(data) ? data : (data.schedules || []);
 
-    this.groupsList = Array.from(groupSet).filter(Boolean).sort();
-    this.populateGroupSelect();
+      const groupSet = new Set();
+      this.schedules.forEach(item => {
+        const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
+        const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
+        if (yL) groupSet.add(`${yL}${dept ? ' - ' + dept : ''}`);
+      });
+
+      this.groupsList = Array.from(groupSet).filter(Boolean).sort();
+      this.populateGroupSelect();
+
+      if (loadingEl) loadingEl.style.display = 'none';
+    } catch (error) {
+      console.error("Error refreshing student data:", error);
+      const loadingEl = document.getElementById('studentLoading');
+      if (loadingEl) loadingEl.style.display = 'none';
+    }
   }
 
   populateGroupSelect() {
