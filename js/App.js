@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — تصميم منفصل (أزرار/قوائم مستقلة للفرق، الأقسام، والمجموعات، والدكاترة)
+//  نظام الجداول — ربط كامل ومباشر للأزرار الأربعة من Google Sheets
 // =====================================================================
 
 const COLS = {
@@ -298,21 +298,32 @@ class SchedulerView {
     try { data = await loadData(this.api, force); } finally { loading.style.display = 'none'; }
     this.schedules = schedulesOf(data);
 
-    // استخراج الخيارات المستقلة من الداتا الأصلية
+    // سحب البيانات الحقيقية مباشرة من الجوجل شيت لجميع الأزرار الأربعة
     const years = new Set();
     const depts = new Set();
     const groups = new Set();
     const instructors = new Set();
 
-    (data.groups || []).forEach(g => {
-      if (g['الفرقة']) years.add(g['الفرقة']);
-      if (g['المجموعة']) groups.add(g['المجموعة']);
-    });
-    (data.instructors || []).forEach(i => {
-      const n = getVal(i, INSTRUCTOR_COLS);
-      if (n) instructors.add(n);
-    });
+    // 1. جلب البيانات من جداول الإعدادات الخاصة (Groups & Instructors) إن وجدت في الشيت
+    if (data.groups && Array.isArray(data.groups)) {
+      data.groups.forEach(g => {
+        const y = g['الفرقة'] || g.year;
+        const d = g['الشعبة'] || g['القسم'] || g.dept;
+        const grp = g['المجموعة'] || g.group;
+        if (y) years.add(y.toString().trim());
+        if (d) depts.add(d.toString().trim());
+        if (grp) groups.add(grp.toString().trim());
+      });
+    }
 
+    if (data.instructors && Array.isArray(data.instructors)) {
+      data.instructors.forEach(i => {
+        const n = getVal(i, INSTRUCTOR_COLS);
+        if (n) instructors.add(n);
+      });
+    }
+
+    // 2. تكميل البيانات من جدول الحصص (Schedules) لضمان شمولية الشيت بالكامل
     this.schedules.forEach(it => {
       const y = col(it, 'year');
       const d = col(it, 'dept');
@@ -324,9 +335,9 @@ class SchedulerView {
       splitNames(col(it, 'assistant')).forEach(n => instructors.add(n));
     });
 
-    // تعبئة القوائم المنسدلة بشكل مستقل تماماً
-    this.populateSelect('selYear', [...years].sort(), this.filters.year, '-- كل الفرق --');
-    this.populateSelect('selDept', [...depts].sort(), this.filters.dept, '-- كل الأقسام --');
+    // تعبئة القوائم الأربعة بالبيانات المستخرجة فعلياً من الشيت
+    this.populateSelect('selYear', sortYears([...years]), this.filters.year, '-- كل الفرق --');
+    this.populateSelect('selDept', [...depts].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.dept, '-- كل الأقسام --');
     this.populateSelect('selGroup', [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.group, '-- كل المجموعات --');
     this.populateSelect('selInstructor', [...instructors].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.instructor, '-- كل الدكاترة --');
 
@@ -340,8 +351,13 @@ class SchedulerView {
     items.forEach(item => {
       sel.appendChild(new Option(item, item));
     });
-    if (currentVal && items.includes(currentVal)) sel.value = currentVal;
-    else { sel.value = ''; this.filters[elementId.replace('sel', '').toLowerCase()] = ''; }
+    const key = elementId.replace('sel', '').toLowerCase();
+    if (currentVal && items.includes(currentVal)) {
+      sel.value = currentVal;
+    } else {
+      sel.value = '';
+      this.filters[key] = '';
+    }
   }
 
   build() {
@@ -390,7 +406,9 @@ class DoctorView {
     this.requests = data.requests || [];
 
     const inst = new Set();
-    (data.instructors || []).forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
+    if (data.instructors && Array.isArray(data.instructors)) {
+      data.instructors.forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
+    }
     this.schedules.forEach(it => {
       splitNames(col(it, 'doctor')).forEach(n => inst.add(n));
       splitNames(col(it, 'assistant')).forEach(n => inst.add(n));
@@ -484,6 +502,12 @@ class StudentView {
 
     const years = new Set();
     const groups = new Set();
+    if (data.groups && Array.isArray(data.groups)) {
+      data.groups.forEach(g => {
+        if (g['الفرقة']) years.add(g['الفرقة'].toString().trim());
+        if (g['المجموعة']) groups.add(g['المجموعة'].toString().trim());
+      });
+    }
     this.schedules.forEach(it => {
       const y = col(it, 'year');
       const g = col(it, 'group') || col(it, 'dept');
@@ -512,46 +536,4 @@ class StudentView {
   build() {
     const tbody = document.getElementById('stBody');
     if (!tbody) return;
-    const items = this.schedules.filter(it => matchesFilter(it, { year: this.year, group: this.group }));
-    renderGrid(tbody, items);
-  }
-}
-
-// ---------- 9) التطبيق الرئيسي ----------
-export class App {
-  constructor(container, api) {
-    this.container = container;
-    this.api = api;
-  }
-
-  async start() {
-    injectStyles();
-    this.container.innerHTML = `
-      <div class="tt">
-        <div class="tt-nav">
-          <button id="navScheduler" class="tt-btn">1) منسق الجداول</button>
-          <button id="navDoctor" class="tt-btn">2) دكتور / معيد</button>
-          <button id="navStudent" class="tt-btn">3) طالب</button>
-        </div>
-        <div id="viewContainer"></div>
-      </div>`;
-
-    document.getElementById('navScheduler').onclick = () => this.switchView('scheduler');
-    document.getElementById('navDoctor').onclick = () => this.switchView('doctor');
-    document.getElementById('navStudent').onclick = () => this.switchView('student');
-    this.switchView('scheduler');
-  }
-
-  async switchView(name) {
-    const btns = { scheduler: 'navScheduler', doctor: 'navDoctor', student: 'navStudent' };
-    Object.entries(btns).forEach(([k, id]) =>
-      document.getElementById(id).classList.toggle('on', k === name));
-
-    const vc = document.getElementById('viewContainer');
-    vc.innerHTML = '<div class="tt-loading" style="display:block">جاري التحميل...</div>';
-
-    const views = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
-    const view = new views[name](this.api);
-    await view.mount(vc);
-  }
-}
+    const items = this.schedules.filter(it => matchesFilter(it, {
