@@ -1,672 +1,489 @@
-// --- 1. Scheduler View (منسق الجداول) ---
+// =====================================================================
+//  نظام الجداول — نسخة بالشكل الجديد (فرقة + مجموعة، كروت بحد ملوّن)
+// =====================================================================
+
+// ---------- 1) إعدادات: أسماء أعمدة الشيت (عدّليها لو أسماءك مختلفة) ----------
+const COLS = {
+  day:       ['اليوم', 'day'],
+  start:     ['وقت البداية', 'البداية', 'من الساعة', 'الوقت', 'startTime', 'time'],
+  type:      ['النوع', 'نوع الحصة', 'type'],
+  subject:   ['اسم المادة *', 'اسم المادة', 'subject'],
+  hall:      ['القاعة', 'رقم القاعة', 'اسم القاعة', 'hall', 'room', 'نوع القاعة المطلوبة *'],
+  doctor:    ['د. المحاضرة *', 'د. المحاضرة', 'doctor'],
+  assistant: ['المعيدين / السكاشن', 'assistant'],
+  year:      ['الفرقة *', 'الفرقة', 'yearLevel'],
+  group:     ['المجموعة', 'group'],
+  dept:      ['الشعبة / القسم', 'القسم', 'department'],
+};
+const INSTRUCTOR_COLS = ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name'];
+
+// الترتيب من اليمين لليسار: السبت أول عمود جنب الوقت
+const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+const DEFAULT_FIRST_HOUR = 9;
+const DEFAULT_LAST_HOUR = 14; // آخر خانة تبدأ 14:00
+
+// ---------- 2) دوال مساعدة ----------
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const normAr = s => String(s ?? '')
+  .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+  .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/\s+/g, ' ').trim();
+
+function getVal(item, keys) {
+  if (!item) return '';
+  const objKeys = Object.keys(item);
+  for (const pk of keys) {
+    for (const k of objKeys) {
+      if (k.trim() === pk.trim()) {
+        const v = item[k];
+        if (v !== undefined && v !== null && v !== '') return v.toString().trim();
+      }
+    }
+  }
+  for (const pk of keys) {
+    for (const k of objKeys) {
+      const lk = k.toLowerCase().trim();
+      const lpk = pk.toLowerCase().trim();
+      if (lk.includes(lpk)) {
+        if (lpk.includes('مادة') && lk.includes('كود')) continue;
+        const v = item[k];
+        if (v !== undefined && v !== null && v !== '') return v.toString().trim();
+      }
+    }
+  }
+  return '';
+}
+const col = (item, name) => getVal(item, COLS[name]);
+
+// يفهم: "09:00 - 10:00" / "9:00" / "9 ص" / "1:00 م" / "1899-12-30T07:00:00.000Z"
+function parseHour(v) {
+  if (v === undefined || v === null) return null;
+  const s = normAr(v);
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d) ? null : Math.round(d.getHours() + d.getMinutes() / 60);
+  }
+  const m = s.match(/(\d{1,2})(?::(\d{2}))?\s*(ص|م|am|pm)?/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const suf = (m[3] || '').toLowerCase();
+  if ((suf === 'م' || suf === 'pm') && h < 12) h += 12;
+  else if ((suf === 'ص' || suf === 'am') && h === 12) h = 0;
+  else if (!suf && h < 8) h += 12; // 1 => 13
+  return h;
+}
+
+const pad = n => String(n).padStart(2, '0');
+const slotLabel = h => `<bdi dir="ltr">${pad(h)}:00–${pad(h + 1)}:00</bdi>`;
+
+function splitNames(s) {
+  return (s || '').split(/[,،]/).map(x => x.trim()).filter(Boolean);
+}
+
+function yearRank(y) {
+  const n = normAr(y);
+  const order = ['اول', 'ثان', 'ثالث', 'رابع', 'خامس'];
+  const i = order.findIndex(o => n.includes(o));
+  if (i >= 0) return i;
+  const d = n.match(/\d+/);
+  return d ? parseInt(d[0], 10) - 1 : 99;
+}
+const sortYears = arr => arr.sort((a, b) => yearRank(a) - yearRank(b) || a.localeCompare(b, 'ar'));
+
+const sameYear = (a, b) => {
+  const x = normAr(a), y = normAr(b);
+  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+};
+const groupKey = g => {
+  const s = normAr(g);
+  const d = s.match(/\d+/);
+  return d ? d[0] : s;
+};
+
+function matchesGroup(item, year, group) {
+  if (year && !sameYear(col(item, 'year'), year)) return false;
+  const rowGroup = col(item, 'group');
+  if (!group || !rowGroup) return true; // صف بدون مجموعة = لكل مجموعات الفرقة (محاضرة)
+  return groupKey(rowGroup) === groupKey(group);
+}
+const matchesInstructor = (item, name) =>
+  !name || [...splitNames(col(item, 'doctor')), ...splitNames(col(item, 'assistant'))].includes(name);
+
+// ---------- 3) تحميل البيانات (كاش 10 دقائق) ----------
+async function loadData(api, force = false) {
+  const cached = localStorage.getItem('sheet_cache_data');
+  const cachedTime = Number(localStorage.getItem('sheet_cache_time') || 0);
+  const now = Date.now();
+  if (!force && cached && now - cachedTime < 600000) return JSON.parse(cached);
+  try {
+    const data = await api.getData();
+    localStorage.setItem('sheet_cache_data', JSON.stringify(data));
+    localStorage.setItem('sheet_cache_time', String(now));
+    return data;
+  } catch (err) {
+    console.error('Error fetching data:', err);
+    if (cached) return JSON.parse(cached);
+    throw err;
+  }
+}
+const schedulesOf = data => (Array.isArray(data) ? data : (data && data.schedules) || []);
+
+// ---------- 4) الستايل ----------
+function injectStyles() {
+  if (document.getElementById('tt-styles')) return;
+  const st = document.createElement('style');
+  st.id = 'tt-styles';
+  st.textContent = `
+  .tt{--bg:#f1f3f8;--ink:#1b2236;--mute:#6b7287;--line:#dfe3ee;--head:#f3f4f9;
+      --lec-bg:#e4e9f9;--lec-bd:#1e3a8a;--sec-bg:#fce8d5;--sec-bd:#b4600c;--ok:#15803d;
+      direction:rtl;text-align:right;background:var(--bg);color:var(--ink);min-height:100vh;padding:14px;
+      font-family:'IBM Plex Sans Arabic','Readex Pro',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif}
+  .tt *{box-sizing:border-box}
+  .tt-nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .tt-btn{background:#fff;color:var(--ink);border:1.5px solid var(--ink);padding:8px 16px;border-radius:8px;
+          cursor:pointer;font:inherit;font-weight:600}
+  .tt-btn.on{background:var(--ink);color:#fff}
+  .tt-btn:focus-visible,.tt-sel:focus-visible{outline:3px solid #93a8e8;outline-offset:2px}
+  .tt-note{font-size:.85rem;color:var(--mute);margin:4px 2px 14px}
+  .tt-filters{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+  .tt-field{display:flex;flex-direction:column;gap:6px}
+  .tt-field label{font-weight:600;font-size:.95rem}
+  .tt-sel{min-width:190px;padding:10px 14px;border:1.5px solid var(--line);border-radius:10px;background:#fff;
+          font:inherit;color:var(--ink);cursor:pointer}
+  .tt-sel:focus{border-color:var(--lec-bd)}
+  .tt-banner{background:#fff;border-right:4px solid var(--ok);border-radius:8px;padding:16px 18px;margin-bottom:14px;
+             font-weight:600}
+  .tt-loading{text-align:center;color:#0284c7;font-weight:700;padding:12px;display:none}
+  .tt-wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .tt-table{width:100%;min-width:860px;border-collapse:collapse;table-layout:fixed}
+  .tt-table th{background:var(--head);padding:12px 8px;font-weight:600;border:1px solid var(--line);border-top:0}
+  .tt-table td{border:1px solid var(--line);padding:6px;vertical-align:top;height:112px}
+  .tt-table th:first-child,.tt-table td.tt-time{width:112px}
+  .tt-table td.tt-time{background:var(--head);font-weight:600;text-align:center;vertical-align:middle;font-size:.92rem}
+  .tt-card{background:var(--lec-bg);border-right:4px solid var(--lec-bd);border-radius:6px;padding:8px 10px;margin-bottom:6px;
+           min-height:96px}
+  .tt-card:last-child{margin-bottom:0}
+  .tt-card.sec{background:var(--sec-bg);border-right-color:var(--sec-bd)}
+  .tt-subj{font-weight:700;font-size:.95rem;line-height:1.35;margin-bottom:4px}
+  .tt-meta{font-size:.8rem;color:var(--mute);line-height:1.55}
+  .tt-status{font-size:.8rem;font-weight:700;margin-top:6px}
+  .tt-apology{margin-top:6px;background:#fff;border:1px solid #c4cadb;border-radius:6px;padding:3px 12px;
+              font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
+  .tt-legend{margin:10px 2px 0;font-size:.82rem;color:var(--mute)}
+  `;
+  document.head.appendChild(st);
+}
+
+// ---------- 5) رسم الجدول (مشترك بين الشاشات التلاتة) ----------
+function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
+  const type = col(item, 'type');
+  const doc = col(item, 'doctor');
+  const ast = col(item, 'assistant');
+  const isSection = type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (!!ast && !doc);
+  const subject = col(item, 'subject') || 'مادة';
+  const hall = col(item, 'hall');
+  const person = isSection ? (ast || doc) : (doc || ast);
+  const label = isSection ? 'سكشن' : 'محاضرة';
+  const yl = col(item, 'year');
+  const dept = col(item, 'dept');
+  const grp = col(item, 'group');
+
+  return `
+    <div class="tt-card ${isSection ? 'sec' : ''}">
+      <div class="tt-subj">${esc(subject)}</div>
+      <div class="tt-meta">${label}${hall ? ' · ' + esc(hall) : ''}</div>
+      ${person ? `<div class="tt-meta">${esc(person)}</div>` : ''}
+      ${showYear && yl ? `<div class="tt-meta">${esc(yl)}${grp ? ' - مجموعة ' + esc(groupKey(grp)) : (dept ? ' - ' + esc(dept) : '')}</div>` : ''}
+      ${doctorExtra ? doctorExtra(item, subject) : ''}
+    </div>`;
+}
+
+function renderGrid(tbody, items, opts = {}) {
+  // نحدد الساعات من الداتا + الافتراضي
+  const hours = items.map(it => parseHour(col(it, 'start'))).filter(h => h !== null);
+  const first = Math.min(DEFAULT_FIRST_HOUR, ...hours);
+  const last = Math.max(DEFAULT_LAST_HOUR, ...hours);
+
+  let html = '';
+  for (let h = first; h <= last; h++) {
+    html += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
+    DAYS.forEach(day => {
+      const cell = items.filter(it =>
+        normAr(col(it, 'day')) === normAr(day) && parseHour(col(it, 'start')) === h);
+      html += `<td>${cell.map(it => cardHtml(it, opts)).join('')}</td>`;
+    });
+    html += '</tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+const TABLE_HEAD = `
+  <thead><tr><th>الوقت</th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr></thead>`;
+
+// ---------- 6) شاشة منسق الجداول ----------
 class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.instructorsList = [];
-    this.groupsList = [];
-    this.selectedValue = '';
-  }
-
-  getVal(item, keys) {
-    if (!item) return '';
-    const objKeys = Object.keys(item);
-    for (const pk of keys) {
-      for (const k of objKeys) {
-        if (k.trim() === pk.trim()) {
-          const val = item[k];
-          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
-        }
-      }
-    }
-    for (const pk of keys) {
-      for (const k of objKeys) {
-        const lk = k.toLowerCase().trim();
-        const lpk = pk.toLowerCase().trim();
-        if (lk.includes(lpk)) {
-          if (lpk.includes('مادة') && lk.includes('كود')) continue;
-          const val = item[k];
-          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
-        }
-      }
-    }
-    return '';
+    this.selected = '';
   }
 
   async mount(container) {
     container.innerHTML = `
-      <div style="padding: 10px; direction: rtl; text-align: right; font-family: system-ui, sans-serif; background: #f8fafc; min-height: 100vh;">
-        <div style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-          <div style="display: flex; gap: 10px;">
-            <button id="btnRefresh" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">تحديث البيانات</button>
-            <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">وُلّد الجدول</button>
-          </div>
-          <div style="display: flex; gap: 10px; align-items: center;">
-            <select id="filterDropdown" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 260px; cursor: pointer; font-weight: 500; background: white; color: #0369a1;">
-              <option value="">-- اختر المجموعة أو الدكتور --</option>
-            </select>
-          </div>
+      <div class="tt-filters">
+        <div class="tt-field">
+          <label for="schFilter">عرض جدول</label>
+          <select id="schFilter" class="tt-sel" style="min-width:300px"><option value="">-- عرض الكل --</option></select>
         </div>
-
-        <div style="background: white; padding: 20px; border-radius: 8px; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div id="loading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px; display: none;">جاري تحديث البيانات من Google Sheets...</div>
-          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
-            <thead>
-              <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">السبت</th>
-                <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
-              </tr>
-            </thead>
-            <tbody id="gridTableBody"></tbody>
-          </table>
-          <div style="margin-top: 15px; font-size: 0.85rem; color: #64748b; text-align: left;">الأزرق = محاضرة، البرتقالي = سكشن.</div>
-        </div>
+        <button id="btnRefresh" class="tt-btn">تحديث البيانات</button>
+        <button id="btnGenerate" class="tt-btn on">وَلّد الجدول</button>
       </div>
-    `;
+      <div id="schLoading" class="tt-loading">جاري تحديث البيانات من Google Sheets...</div>
+      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="schBody"></tbody></table></div>
+      <div class="tt-legend">الأزرق = محاضرة، البرتقالي = سكشن.</div>`;
 
-    document.getElementById('btnRefresh').addEventListener('click', () => this.refreshData(true));
-    document.getElementById('btnGenerate').addEventListener('click', () => { alert("تم تحديث وتوليد الجدول ميكانيكياً."); this.buildGrid(); });
-    document.getElementById('filterDropdown').addEventListener('change', (e) => {
-      this.selectedValue = e.target.value;
-      this.buildGrid();
-    });
-
-    await this.refreshData(false);
+    document.getElementById('btnRefresh').onclick = () => this.refresh(true);
+    document.getElementById('btnGenerate').onclick = () => { alert('تم تحديث وتوليد الجدول.'); this.build(); };
+    document.getElementById('schFilter').onchange = e => { this.selected = e.target.value; this.build(); };
+    await this.refresh(false);
   }
 
-  async refreshData(forceUpdate = false) {
-    const loading = document.getElementById('loading');
-    
-    // التحقق من وجود تخزين مؤقت (Cache) لسرعة الفتح الفوري
-    let rawData = null;
-    const cachedData = localStorage.getItem('sheet_cache_data');
-    const cachedTime = localStorage.getItem('sheet_cache_time');
-    const now = new Date().getTime();
+  async refresh(force) {
+    const loading = document.getElementById('schLoading');
+    loading.style.display = 'block';
+    let data;
+    try { data = await loadData(this.api, force); } finally { loading.style.display = 'none'; }
+    this.schedules = schedulesOf(data);
 
-    // إذا لم يكن هناك تحديث اجباري، والبيانات مخزنة منذ أقل من 10 دقائق، استخدم الكاش فوراً
-    if (!forceUpdate && cachedData && cachedTime && (now - cachedTime < 600000)) {
-      rawData = JSON.parse(cachedData);
-    } else {
-      if (loading) loading.style.display = 'block';
-      try {
-        rawData = await this.api.getData();
-        localStorage.setItem('sheet_cache_data', JSON.stringify(rawData));
-        localStorage.setItem('sheet_cache_time', now);
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        if (cachedData) rawData = JSON.parse(cachedData); // Fallback to cache if offline
-      }
-      if (loading) loading.style.display = 'none';
-    }
+    // المجموعات
+    const groups = new Map(); // value -> label
+    (data.groups || []).forEach(g => {
+      const y = g['الفرقة'] || '', n = g['المجموعة'] || '';
+      if (y) groups.set(`group:${y}|${groupKey(n || '1')}`, `${y} - مجموعة ${groupKey(n || '1')}`);
+    });
+    this.schedules.forEach(it => {
+      const y = col(it, 'year'), g = col(it, 'group');
+      if (y && g) groups.set(`group:${y}|${groupKey(g)}`, `${y} - مجموعة ${groupKey(g)}`);
+      else if (y && !groups.size) groups.set(`group:${y}|`, y);
+    });
 
-    this.processData(rawData);
+    // الدكاترة
+    const inst = new Set();
+    (data.instructors || []).forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
+    this.schedules.forEach(it => {
+      splitNames(col(it, 'doctor')).forEach(n => inst.add(n));
+      splitNames(col(it, 'assistant')).forEach(n => inst.add(n));
+    });
+
+    const sel = document.getElementById('schFilter');
+    const cur = this.selected;
+    sel.innerHTML = '<option value="">-- عرض الكل --</option>';
+    const og1 = document.createElement('optgroup'); og1.label = 'المجموعات';
+    [...groups.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ar')).forEach(([v, l]) => {
+      og1.appendChild(new Option(l, v));
+    });
+    const og2 = document.createElement('optgroup'); og2.label = 'الدكاترة والمعيدين';
+    [...inst].sort((a, b) => a.localeCompare(b, 'ar')).forEach(n => og2.appendChild(new Option(n, `inst:${n}`)));
+    sel.append(og1, og2);
+    if (cur) sel.value = cur;
+    this.build();
   }
 
-  processData(data) {
-    this.schedules = Array.isArray(data) ? data : (data.schedules || []);
-    const rawInstructors = data.instructors || [];
-    const groupsData = data.groups || [];
-
-    const groupSet = new Set();
-    groupsData.forEach(g => {
-      const yr = g['الفرقة'] || '';
-      const grp = g['المجموعة'] || '';
-      if (yr) groupSet.add(`${yr} - مجموعة ${grp || '1'}`);
-    });
-
-    this.schedules.forEach(item => {
-      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
-      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-      if (yL) groupSet.add(`${yL}${dept ? ' - ' + dept : ''}`);
-    });
-
-    const instructorSet = new Set();
-    rawInstructors.forEach(inst => {
-      const name = this.getVal(inst, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name']);
-      if (name) instructorSet.add(name);
-    });
-
-    this.schedules.forEach(item => {
-      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
-      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
-      if (doc) doc.split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
-      if (ast) ast.split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
-    });
-
-    this.groupsList = Array.from(groupSet).filter(Boolean).sort();
-    this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
-
-    const select = document.getElementById('filterDropdown');
-    if (select) {
-      const currentVal = this.selectedValue;
-      select.innerHTML = `<option value="">-- عرض الكل --</option>`;
-      const groupOptGroup = document.createElement('optgroup');
-      groupOptGroup.label = "المجموعات";
-      this.groupsList.forEach(g => {
-        const opt = document.createElement('option');
-        opt.value = `group:${g}`;
-        opt.textContent = g;
-        groupOptGroup.appendChild(opt);
-      });
-      select.appendChild(groupOptGroup);
-
-      const instOptGroup = document.createElement('optgroup');
-      instOptGroup.label = "الدكاترة والمعيدين";
-      this.instructorsList.forEach(inst => {
-        const opt = document.createElement('option');
-        opt.value = `inst:${inst}`;
-        opt.textContent = inst;
-        instOptGroup.appendChild(opt);
-      });
-      select.appendChild(instOptGroup);
-      
-      if (currentVal) select.value = currentVal;
-    }
-
-    this.buildGrid();
-  }
-
-  buildGrid() {
-    const tbody = document.getElementById('gridTableBody');
+  build() {
+    const tbody = document.getElementById('schBody');
     if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const filtered = this.schedules.filter(item => {
-      if (!this.selectedValue) return true;
-      const [type, val] = this.selectedValue.split(':');
-      if (type === 'group') {
-        const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
-        const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-        const combined = `${yL}${dept ? ' - ' + dept : ''}`;
-        return combined.includes(val) || yL.includes(val);
-      } else if (type === 'inst') {
-        const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
-        const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
-        return doc.includes(val) || ast.includes(val);
-      }
-      return true;
-    });
-
-    const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
-    const days = ["الخميس", "الأربعاء", "الثلاثاء", "الإثنين", "الأحد", "السبت"];
-
-    timeSlots.forEach((slot, slotIndex) => {
-      const tr = document.createElement('tr');
-      tr.style.borderBottom = '1px solid #e2e8f0';
-      tr.style.height = '90px';
-
-      let rowHtml = '';
-      days.forEach((day, dayIndex) => {
-        const item = filtered[slotIndex * 6 + dayIndex] || null;
-        if (item) {
-          const isLecture = slotIndex % 2 === 0;
-          const bgCard = isLecture ? '#e0f2fe' : '#ffedd5'; 
-          const borderCard = isLecture ? '#bae6fd' : '#fed7aa';
-          const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
-          
-          const subject = this.getVal(item, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
-          const hall = this.getVal(item, ['نوع القاعة المطلوبة *', 'القاعة', 'hall']) || 'قاعة';
-          const doctor = isLecture ? (this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || 'دكتور') : (this.getVal(item, ['المعيدين / السكاشن', 'assistant']) || 'معيد');
-
-          rowHtml += `
-            <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-                <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
-                <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
-              </div>
-            </td>
-          `;
-        } else {
-          rowHtml += `<td style="border-left: 1px solid #e2e8f0;"></td>`;
-        }
-      });
-
-      rowHtml += `<td style="padding: 12px; font-weight: bold; color: #334155; background: #f8fafc; font-size: 0.9rem; text-align: center; width: 130px;">${slot}</td>`;
-      tr.innerHTML = rowHtml;
-      tbody.appendChild(tr);
-    });
+    let items = this.schedules;
+    if (this.selected.startsWith('group:')) {
+      const [year, grp] = this.selected.slice(6).split('|');
+      items = items.filter(it => matchesGroup(it, year, grp));
+    } else if (this.selected.startsWith('inst:')) {
+      const name = this.selected.slice(5);
+      items = items.filter(it => matchesInstructor(it, name));
+    }
+    renderGrid(tbody, items, { showYear: true });
   }
 }
 
-// --- 2. Doctor View (بوابة الدكتور والمعيد) ---
+// ---------- 7) شاشة الدكتور / المعيد ----------
 class DoctorView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.instructorsList = [];
     this.requests = [];
-    this.selectedInstructor = '';
-    this.selectedReason = 'ظرف طارئ';
-  }
-
-  getVal(item, keys) {
-    if (!item) return '';
-    const objKeys = Object.keys(item);
-    for (const pk of keys) {
-      for (const k of objKeys) {
-        if (k.trim() === pk.trim()) {
-          const val = item[k];
-          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
-        }
-      }
-    }
-    for (const pk of keys) {
-      for (const k of objKeys) {
-        const lk = k.toLowerCase().trim();
-        const lpk = pk.toLowerCase().trim();
-        if (lk.includes(lpk)) {
-          if (lpk.includes('مادة') && lk.includes('كود')) continue;
-          const val = item[k];
-          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
-        }
-      }
-    }
-    return '';
+    this.selected = '';
+    this.reason = 'ظرف طارئ';
   }
 
   async mount(container) {
     container.innerHTML = `
-      <div style="padding: 10px; direction: rtl; text-align: right; font-family: system-ui, sans-serif; background: #f8fafc; min-height: 100vh;">
-        <div style="background: #e2e8f0; padding: 10px 15px; border-radius: 6px; font-size: 0.85rem; color: #334155; margin-bottom: 15px;">
-          وضع تجريبي: في النظام الحقيقي كل شخص يدخل بحسابه، والنظام بيحدد دوره ويفتح له شاشته بس. هنا بنتبدل بين الأدوار عشان نشوف الفرق.
+      <div class="tt-note">وضع تجريبي: في النظام الحقيقي كل شخص يدخل بحسابه، والنظام بيحدد دوره ويفتح له شاشته بس. هنا بنتبدل بين الأدوار بإيدك عشان نشوف الفرق.</div>
+      <div class="tt-filters">
+        <div class="tt-field">
+          <label for="docSelect">اختر اسمك</label>
+          <select id="docSelect" class="tt-sel" style="min-width:240px"><option value="">-- اختر الدكتور --</option></select>
         </div>
-
-        <div style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px; display: flex; justify-content: flex-end; align-items: center; gap: 20px; flex-wrap: wrap;">
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">سبب الاعتذار</label>
-            <select id="reasonSelect" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; cursor: pointer;">
-              <option value="ظرف طارئ">ظرف طارئ</option>
-              <option value="اعتذار عن المحاضرة">اعتذار عن المحاضرة</option>
-              <option value="تعديل موعد">تعديل موعد</option>
-            </select>
-          </div>
-
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <label style="font-weight: bold; color: #334155; font-size: 0.9rem;">اختر اسمك</label>
-            <select id="doctorSelect" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; min-width: 200px; cursor: pointer; color: #0369a1; font-weight: 500;">
-              <option value="">-- اختر الدكتور --</option>
-            </select>
-          </div>
-        </div>
-
-        <div style="background: white; padding: 20px; border-radius: 8px; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div id="docLoading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px; display: none;">جاري تحديث جدول الدكتور...</div>
-          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
-            <thead>
-              <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">السبت</th>
-                <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
-              </tr>
-            </thead>
-            <tbody id="doctorGridBody"></tbody>
-          </table>
+        <div class="tt-field">
+          <label for="reasonSelect">سبب الاعتذار</label>
+          <select id="reasonSelect" class="tt-sel">
+            <option>ظرف طارئ</option><option>اعتذار عن المحاضرة</option><option>تعديل موعد</option>
+          </select>
         </div>
       </div>
-    `;
+      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="docBody"></tbody></table></div>`;
 
-    document.getElementById('doctorSelect').addEventListener('change', (e) => {
-      this.selectedInstructor = e.target.value;
-      this.buildDoctorGrid();
-    });
-
-    document.getElementById('reasonSelect').addEventListener('change', (e) => {
-      this.selectedReason = e.target.value;
-    });
-
-    await this.refreshData();
+    document.getElementById('docSelect').onchange = e => { this.selected = e.target.value; this.build(); };
+    document.getElementById('reasonSelect').onchange = e => { this.reason = e.target.value; };
+    await this.refresh();
   }
 
-  async refreshData() {
-    const cachedData = localStorage.getItem('sheet_cache_data');
-    let data = cachedData ? JSON.parse(cachedData) : null;
-
-    if (!data) {
-      data = await this.api.getData();
-      localStorage.setItem('sheet_cache_data', JSON.stringify(data));
-    }
-
-    this.schedules = Array.isArray(data) ? data : (data.schedules || []);
+  async refresh(force = false) {
+    const data = await loadData(this.api, force);
+    this.schedules = schedulesOf(data);
     this.requests = data.requests || [];
-    const rawInstructors = data.instructors || [];
 
-    const instructorSet = new Set();
-    rawInstructors.forEach(inst => {
-      const name = this.getVal(inst, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name']);
-      if (name) instructorSet.add(name);
+    const inst = new Set();
+    (data.instructors || []).forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
+    this.schedules.forEach(it => {
+      splitNames(col(it, 'doctor')).forEach(n => inst.add(n));
+      splitNames(col(it, 'assistant')).forEach(n => inst.add(n));
     });
+    const list = [...inst].sort((a, b) => a.localeCompare(b, 'ar'));
 
-    this.schedules.forEach(item => {
-      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
-      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
-      if (doc) doc.split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
-      if (ast) ast.split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
-    });
-
-    this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
-    const select = document.getElementById('doctorSelect');
-    if (select) {
-      const currentVal = this.selectedInstructor;
-      select.innerHTML = `<option value="">-- اختر الدكتور --</option>`;
-      this.instructorsList.forEach(name => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        select.appendChild(opt);
-      });
-      if (this.instructorsList.length > 0 && !this.selectedInstructor) {
-        this.selectedInstructor = this.instructorsList[0];
-      }
-      if (currentVal) select.value = currentVal;
-      else if (this.selectedInstructor) select.value = this.selectedInstructor;
-    }
-
-    this.buildDoctorGrid();
+    const sel = document.getElementById('docSelect');
+    sel.innerHTML = '<option value="">-- اختر الدكتور --</option>';
+    list.forEach(n => sel.appendChild(new Option(n, n)));
+    if (!this.selected && list.length) this.selected = list[0];
+    sel.value = this.selected;
+    this.build();
   }
 
-  buildDoctorGrid() {
-    const tbody = document.getElementById('doctorGridBody');
+  build() {
+    const tbody = document.getElementById('docBody');
     if (!tbody) return;
-    tbody.innerHTML = '';
+    const items = this.schedules.filter(it => matchesInstructor(it, this.selected));
 
-    const filtered = this.schedules.filter(item => {
-      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
-      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
-      return !this.selectedInstructor || doc.includes(this.selectedInstructor) || ast.includes(this.selectedInstructor);
-    });
+    const extra = (item, subject) => {
+      const req = this.requests.find(r =>
+        (r.doctorName || r['اسم الدكتور'] || '') === this.selected &&
+        (r.details || r['التفاصيل'] || '').includes(subject));
+      if (req) {
+        const s = req.status || req['الحالة'] || 'قيد المراجعة';
+        const color = s === 'تمت الموافقة' ? '#10b981' : (s === 'مرفوض' ? '#ef4444' : '#d97706');
+        return `<div class="tt-status" style="color:${color}">${esc(s)}</div>`;
+      }
+      return `<button class="tt-apology" data-subject="${esc(subject)}">اعتذار</button>`;
+    };
 
-    const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
-    const days = ["الخميس", "الأربعاء", "الثلاثاء", "الإثنين", "الأحد", "السبت"];
+    renderGrid(tbody, items, { showYear: true, doctorExtra: extra });
 
-    timeSlots.forEach((slot, slotIndex) => {
-      const tr = document.createElement('tr');
-      tr.style.borderBottom = '1px solid #e2e8f0';
-      tr.style.height = '100px';
-
-      let rowHtml = '';
-      days.forEach((day, dayIndex) => {
-        const item = filtered[slotIndex * 6 + dayIndex] || null;
-        if (item) {
-          const isLecture = slotIndex % 2 === 0;
-          const bgCard = isLecture ? '#e0f2fe' : '#ffedd5'; 
-          const borderCard = isLecture ? '#bae6fd' : '#fed7aa';
-          const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
-          
-          const subject = this.getVal(item, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
-          const hall = this.getVal(item, ['نوع القاعة المطلوبة *', 'القاعة', 'hall']) || 'قاعة';
-          const yearLevel = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']) || '';
-          const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']) || '';
-
-          const activeReq = this.requests.find(r => 
-            (r.doctorName || r['اسم الدكتور'] || '') === this.selectedInstructor &&
-            (r.details || r['التفاصيل'] || '').includes(subject)
-          );
-          const statusText = activeReq ? (activeReq.status || activeReq['الحالة'] || 'قيد المراجعة') : null;
-
-          rowHtml += `
-            <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-                <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
-                <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 6px;">${yearLevel} ${dept ? '- ' + dept : ''}</div>
-                
-                ${statusText ? 
-                  `<div style="font-size: 0.8rem; font-weight: bold; color: ${statusText === 'تمت الموافقة' ? '#10b981' : (statusText === 'مرفوض' ? '#ef4444' : '#d97706')}; margin-bottom: 4px;">${statusText}</div>` : 
-                  `<button class="btn-apology" data-subject="${subject}" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 4px 12px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: bold;">اعتذار</button>`
-                }
-              </div>
-            </td>
-          `;
-        } else {
-          rowHtml += `<td style="border-left: 1px solid #e2e8f0;"></td>`;
-        }
-      });
-
-      rowHtml += `<td style="padding: 12px; font-weight: bold; color: #334155; background: #f8fafc; font-size: 0.9rem; text-align: center; width: 130px;">${slot}</td>`;
-      tr.innerHTML = rowHtml;
-      tbody.appendChild(tr);
-    });
-
-    tbody.querySelectorAll('.btn-apology').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const subj = e.target.dataset.subject;
-        if (confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) {
-          await this.api.sendAction({
-            action: "addRequest",
-            doctorName: this.selectedInstructor,
-            details: `اعتذار عن مادة ${subj}`,
-            reason: this.selectedReason
-          });
-          alert("تم إرسال طلب الاعتذار للمنسق بنجاح!");
-          localStorage.removeItem('sheet_cache_data'); // مسح الكاش لتحديث الطلبات
-          await this.refreshData();
-        }
-      });
+    tbody.querySelectorAll('.tt-apology').forEach(btn => {
+      btn.onclick = async e => {
+        const subj = e.currentTarget.dataset.subject;
+        if (!confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) return;
+        await this.api.sendAction({
+          action: 'addRequest',
+          doctorName: this.selected,
+          details: `اعتذار عن مادة ${subj}`,
+          reason: this.reason,
+        });
+        alert('تم إرسال طلب الاعتذار للمنسق بنجاح!');
+        localStorage.removeItem('sheet_cache_data');
+        await this.refresh(true);
+      };
     });
   }
 }
 
-// --- 3. Student View (بوابة الطالب) ---
+// ---------- 8) شاشة الطالب (فرقة + مجموعة) ----------
 class StudentView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.yearsList = [];
-    this.groupsList = [];
-    this.selectedYear = '';
-    this.selectedGroup = '';
-  }
-
-  getVal(item, keys) {
-    if (!item) return '';
-    const objKeys = Object.keys(item);
-    for (const pk of keys) {
-      for (const k of objKeys) {
-        if (k.trim() === pk.trim()) {
-          const val = item[k];
-          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
-        }
-      }
-    }
-    for (const pk of keys) {
-      for (const k of objKeys) {
-        const lk = k.toLowerCase().trim();
-        const lpk = pk.toLowerCase().trim();
-        if (lk.includes(lpk)) {
-          if (lpk.includes('مادة') && lk.includes('كود')) continue;
-          const val = item[k];
-          if (val !== undefined && val !== null && val !== '') return val.toString().trim();
-        }
-      }
-    }
-    return '';
+    this.groupRows = []; // [{year, group}]
+    this.year = '';
+    this.group = '';
   }
 
   async mount(container) {
     container.innerHTML = `
-      <div style="padding: 10px; direction: rtl; text-align: right; font-family: system-ui, sans-serif; background: #f8fafc; min-height: 100vh;">
-        <div style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 15px; flex-wrap: wrap;">
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <select id="studentGroupSelect" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; min-width: 180px; cursor: pointer; color: #0369a1; font-weight: 500;">
-              <option value="">-- اختر المجموعة --</option>
-            </select>
-          </div>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <select id="studentYearSelect" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; min-width: 180px; cursor: pointer; color: #0369a1; font-weight: 500;">
-              <option value="">-- اختر الفرقة --</option>
-            </select>
-          </div>
+      <div class="tt-note">وضع تجريبي: في النظام الحقيقي كل شخص يدخل بحسابه، والنظام بيحدد دوره ويفتح له شاشته بس. هنا بنتبدل بين الأدوار بإيدك عشان نشوف الفرق.</div>
+      <div class="tt-filters">
+        <div class="tt-field">
+          <label for="stYear">الفرقة</label>
+          <select id="stYear" class="tt-sel"></select>
         </div>
-
-        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 10px 15px; border-radius: 6px; font-size: 0.85rem; color: #166534; margin-bottom: 15px; font-weight: 500;">
-          جدولك محدث. مفيش تغييرات.
-        </div>
-
-        <div style="background: white; padding: 20px; border-radius: 8px; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div id="studentLoading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px; display: none;">جاري تحديث جدول الطالب...</div>
-          <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
-            <thead>
-              <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الخميس</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأربعاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الثلاثاء</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الإثنين</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">الأحد</th>
-                <th style="padding: 12px; color: #334155; border-left: 1px solid #e2e8f0;">السبت</th>
-                <th style="padding: 12px; color: #334155; width: 130px;">الوقت</th>
-              </tr>
-            </thead>
-            <tbody id="studentGridBody"></tbody>
-          </table>
+        <div class="tt-field">
+          <label for="stGroup">المجموعة</label>
+          <select id="stGroup" class="tt-sel" style="min-width:240px"></select>
         </div>
       </div>
-    `;
+      <div class="tt-banner">جدولك محدّث. مفيش تغييرات.</div>
+      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="stBody"></tbody></table></div>`;
 
-    document.getElementById('studentYearSelect').addEventListener('change', (e) => {
-      this.selectedYear = e.target.value;
-      this.buildStudentGrid();
-    });
-
-    document.getElementById('studentGroupSelect').addEventListener('change', (e) => {
-      this.selectedGroup = e.target.value;
-      this.buildStudentGrid();
-    });
-
-    await this.refreshData();
+    document.getElementById('stYear').onchange = e => {
+      this.year = e.target.value;
+      this.group = '';
+      this.fillGroups();
+      this.build();
+    };
+    document.getElementById('stGroup').onchange = e => { this.group = e.target.value; this.build(); };
+    await this.refresh();
   }
 
-  async refreshData() {
-    const cachedData = localStorage.getItem('sheet_cache_data');
-    let data = cachedData ? JSON.parse(cachedData) : null;
+  async refresh() {
+    const data = await loadData(this.api);
+    this.schedules = schedulesOf(data);
 
-    if (!data) {
-      data = await this.api.getData();
-      localStorage.setItem('sheet_cache_data', JSON.stringify(data));
-    }
+    // المجموعات من شيت المجموعات، ولو مش موجود من الجدول نفسه
+    const seen = new Set();
+    const rows = [];
+    const add = (year, grp) => {
+      if (!year) return;
+      const k = `${normAr(year)}|${groupKey(grp)}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      rows.push({ year, group: grp ? groupKey(grp) : '' });
+    };
+    (data.groups || []).forEach(g => add(g['الفرقة'], g['المجموعة']));
+    this.schedules.forEach(it => add(col(it, 'year'), col(it, 'group')));
+    this.groupRows = rows;
 
-    this.schedules = Array.isArray(data) ? data : (data.schedules || []);
+    const years = sortYears([...new Set(rows.map(r => r.year))]);
+    const ySel = document.getElementById('stYear');
+    ySel.innerHTML = '';
+    years.forEach(y => ySel.appendChild(new Option(y, y)));
+    if (!this.year || !years.includes(this.year)) this.year = years[0] || '';
+    ySel.value = this.year;
 
-    const yearSet = new Set();
-    const groupSet = new Set();
-
-    this.schedules.forEach(item => {
-      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
-      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-      if (yL) {
-        yearSet.add(yL);
-        groupSet.add(dept ? `${yL} - ${dept}` : yL);
-      }
-    });
-
-    this.yearsList = Array.from(yearSet).filter(Boolean).sort();
-    this.groupsList = Array.from(groupSet).filter(Boolean).sort();
-
-    const yearSelect = document.getElementById('studentYearSelect');
-    if (yearSelect) {
-      const currentVal = this.selectedYear;
-      yearSelect.innerHTML = `<option value="">-- اختر الفرقة --</option>`;
-      this.yearsList.forEach(y => {
-        const opt = document.createElement('option');
-        opt.value = y;
-        opt.textContent = y;
-        yearSelect.appendChild(opt);
-      });
-      if (this.yearsList.length > 0 && !this.selectedYear) {
-        this.selectedYear = this.yearsList[0];
-      }
-      if (currentVal) yearSelect.value = currentVal;
-      else if (this.selectedYear) yearSelect.value = this.selectedYear;
-    }
-
-    const groupSelect = document.getElementById('studentGroupSelect');
-    if (groupSelect) {
-      const currentVal = this.selectedGroup;
-      groupSelect.innerHTML = `<option value="">-- اختر المجموعة --</option>`;
-      this.groupsList.forEach(g => {
-        const opt = document.createElement('option');
-        opt.value = g;
-        opt.textContent = g;
-        groupSelect.appendChild(opt);
-      });
-      if (this.groupsList.length > 0 && !this.selectedGroup) {
-        this.selectedGroup = this.groupsList[0];
-      }
-      if (currentVal) groupSelect.value = currentVal;
-      else if (this.selectedGroup) groupSelect.value = this.selectedGroup;
-    }
-
-    this.buildStudentGrid();
+    this.fillGroups();
+    this.build();
   }
 
-  buildStudentGrid() {
-    const tbody = document.getElementById('studentGridBody');
+  fillGroups() {
+    const gSel = document.getElementById('stGroup');
+    gSel.innerHTML = '';
+    const groups = this.groupRows
+      .filter(r => sameYear(r.year, this.year))
+      .map(r => r.group)
+      .filter(Boolean);
+    const uniq = [...new Set(groups)].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
+    if (!uniq.length) gSel.appendChild(new Option('كل المجموعات', ''));
+    uniq.forEach(g => gSel.appendChild(new Option(`${this.year} - مجموعة ${g}`, g)));
+    if (!this.group || !uniq.includes(this.group)) this.group = uniq[0] || '';
+    gSel.value = this.group;
+  }
+
+  build() {
+    const tbody = document.getElementById('stBody');
     if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const filtered = this.schedules.filter(item => {
-      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
-      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-      const combined = `${yL}${dept ? ' - ' + dept : ''}`;
-
-      const matchYear = !this.selectedYear || yL.includes(this.selectedYear);
-      const matchGroup = !this.selectedGroup || combined.includes(this.selectedGroup);
-
-      return matchYear && matchGroup;
-    });
-
-    const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
-    const days = ["الخميس", "الأربعاء", "الثلاثاء", "الإثنين", "الأحد", "السبت"];
-
-    timeSlots.executeEach ? null : timeSlots.forEach((slot, slotIndex) => {
-      const tr = document.createElement('tr');
-      tr.style.borderBottom = '1px solid #e2e8f0';
-      tr.style.height = '100px';
-
-      let rowHtml = '';
-      days.forEach((day, dayIndex) => {
-        const item = filtered[slotIndex * 6 + dayIndex] || null;
-        if (item) {
-          const isLecture = slotIndex % 2 === 0;
-          const bgCard = isLecture ? '#e0f2fe' : '#ffedd5'; 
-          const borderCard = isLecture ? '#bae6fd' : '#fed7aa';
-          const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
-          
-          const subject = this.getVal(item, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
-          const hall = this.getVal(item, ['نوع القاعة المطلوبة *', 'القاعة', 'hall']) || 'قاعة';
-          const doctor = isLecture ? (this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || 'دكتور') : (this.getVal(item, ['المعيدين / السكاشن', 'assistant']) || 'معيد');
-
-          rowHtml += `
-            <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-                <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
-                <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
-              </div>
-            </td>
-          `;
-        } else {
-          rowHtml += `<td style="border-left: 1px solid #e2e8f0;"></td>`;
-        }
-      });
-
-      rowHtml += `<td style="padding: 12px; font-weight: bold; color: #334155; background: #f8fafc; font-size: 0.9rem; text-align: center; width: 130px;">${slot}</td>`;
-      tr.innerHTML = rowHtml;
-      tbody.appendChild(tr);
-    });
+    const items = this.schedules.filter(it => matchesGroup(it, this.year, this.group));
+    renderGrid(tbody, items);
   }
 }
 
-// --- Main App ---
+// ---------- 9) التطبيق الرئيسي ----------
 export class App {
   constructor(container, api) {
     this.container = container;
@@ -674,48 +491,33 @@ export class App {
   }
 
   async start() {
+    injectStyles();
     this.container.innerHTML = `
-      <div style="background: #f8fafc; min-height: 100vh; font-family: system-ui, sans-serif; direction: rtl; text-align: right; padding: 15px;">
-        <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 10px;">
-          <button id="navScheduler" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">1) منسق الجداول</button>
-          <button id="navDoctor" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">2) دكتور / معيد</button>
-          <button id="navStudent" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">3) طالب</button>
+      <div class="tt">
+        <div class="tt-nav">
+          <button id="navScheduler" class="tt-btn">1) منسق الجداول</button>
+          <button id="navDoctor" class="tt-btn">2) دكتور / معيد</button>
+          <button id="navStudent" class="tt-btn">3) طالب</button>
         </div>
         <div id="viewContainer"></div>
-      </div>
-    `;
+      </div>`;
 
-    document.getElementById('navScheduler').addEventListener('click', () => this.switchView('scheduler'));
-    document.getElementById('navDoctor').addEventListener('click', () => this.switchView('doctor'));
-    document.getElementById('navStudent').addEventListener('click', () => this.switchView('student'));
-
+    document.getElementById('navScheduler').onclick = () => this.switchView('scheduler');
+    document.getElementById('navDoctor').onclick = () => this.switchView('doctor');
+    document.getElementById('navStudent').onclick = () => this.switchView('student');
     this.switchView('scheduler');
   }
 
-  async switchView(viewName) {
-    const sBtn = document.getElementById('navScheduler');
-    const dBtn = document.getElementById('navDoctor');
-    const stBtn = document.getElementById('navStudent');
-
-    [sBtn, dBtn, stBtn].forEach(b => {
-      if (b) { b.style.background = '#f1f5f9'; b.style.color = '#334155'; b.style.border = '1px solid #cbd5e1'; }
-    });
+  async switchView(name) {
+    const btns = { scheduler: 'navScheduler', doctor: 'navDoctor', student: 'navStudent' };
+    Object.entries(btns).forEach(([k, id]) =>
+      document.getElementById(id).classList.toggle('on', k === name));
 
     const vc = document.getElementById('viewContainer');
-    vc.innerHTML = `<div style="text-align: center; padding: 30px; color: #0284c7; font-weight: bold;">جاري التحميل الفوري...</div>`;
-    
-    if (viewName === 'scheduler') {
-      sBtn.style.background = '#1e293b'; sBtn.style.color = 'white'; sBtn.style.border = 'none';
-      const v = new SchedulerView(this.api);
-      await v.mount(vc);
-    } else if (viewName === 'doctor') {
-      dBtn.style.background = '#1e293b'; dBtn.style.color = 'white'; dBtn.style.border = 'none';
-      const v = new DoctorView(this.api);
-      await v.mount(vc);
-    } else if (viewName === 'student') {
-      stBtn.style.background = '#1e293b'; stBtn.style.color = 'white'; stBtn.style.border = 'none';
-      const v = new StudentView(this.api);
-      await v.mount(vc);
-    }
+    vc.innerHTML = '<div class="tt-loading" style="display:block">جاري التحميل...</div>';
+
+    const views = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
+    const view = new views[name](this.api);
+    await view.mount(vc);
   }
 }
