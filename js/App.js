@@ -1,8 +1,7 @@
 // =====================================================================
-//  نظام الجداول — نسخة بالشكل الجديد (فرقة + مجموعة، كروت بحد ملوّن)
+//  نظام الجداول — تصميم محدث (الوقت من اليمين + ربط كامل ببيانات الشيت)
 // =====================================================================
 
-// ---------- 1) إعدادات: أسماء أعمدة الشيت (عدّليها لو أسماءك مختلفة) ----------
 const COLS = {
   day:       ['اليوم', 'day'],
   start:     ['وقت البداية', 'البداية', 'من الساعة', 'الوقت', 'startTime', 'time'],
@@ -17,12 +16,12 @@ const COLS = {
 };
 const INSTRUCTOR_COLS = ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name'];
 
-// الترتيب من اليمين لليسار: السبت أول عمود جنب الوقت
+// الترتيب من اليمين لليسار: الوقت في أقصى اليمين يليه السبت ثم الأحد...
 const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 const DEFAULT_FIRST_HOUR = 9;
-const DEFAULT_LAST_HOUR = 14; // آخر خانة تبدأ 14:00
+const DEFAULT_LAST_HOUR = 14;
 
-// ---------- 2) دوال مساعدة ----------
+// ---------- دوال مساعدة ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const normAr = s => String(s ?? '')
@@ -56,7 +55,6 @@ function getVal(item, keys) {
 }
 const col = (item, name) => getVal(item, COLS[name]);
 
-// يفهم: "09:00 - 10:00" / "9:00" / "9 ص" / "1:00 م" / "1899-12-30T07:00:00.000Z"
 function parseHour(v) {
   if (v === undefined || v === null) return null;
   const s = normAr(v);
@@ -71,7 +69,7 @@ function parseHour(v) {
   const suf = (m[3] || '').toLowerCase();
   if ((suf === 'م' || suf === 'pm') && h < 12) h += 12;
   else if ((suf === 'ص' || suf === 'am') && h === 12) h = 0;
-  else if (!suf && h < 8) h += 12; // 1 => 13
+  else if (!suf && h < 8) h += 12;
   return h;
 }
 
@@ -104,19 +102,27 @@ const groupKey = g => {
 
 function matchesGroup(item, year, group) {
   if (year && !sameYear(col(item, 'year'), year)) return false;
-  const rowGroup = col(item, 'group');
-  if (!group || !rowGroup) return true; // صف بدون مجموعة = لكل مجموعات الفرقة (محاضرة)
-  return groupKey(rowGroup) === groupKey(group);
+  const rowGroup = col(item, 'group') || col(item, 'dept');
+  if (!group || !rowGroup) return true;
+  return normAr(rowGroup).includes(normAr(group)) || groupKey(rowGroup) === groupKey(group);
 }
-const matchesInstructor = (item, name) =>
-  !name || [...splitNames(col(item, 'doctor')), ...splitNames(col(item, 'assistant'))].includes(name);
 
-// ---------- 3) تحميل البيانات (كاش 10 دقائق) ----------
+const matchesInstructor = (item, name) =>
+  !name || [...splitNames(col(item, 'doctor')), ...splitNames(col(item, 'assistant'))].some(n => normAr(n).includes(normAr(name)));
+
+// ---------- تحميل البيانات ----------
 async function loadData(api, force = false) {
   const cached = localStorage.getItem('sheet_cache_data');
   const cachedTime = Number(localStorage.getItem('sheet_cache_time') || 0);
   const now = Date.now();
-  if (!force && cached && now - cachedTime < 600000) return JSON.parse(cached);
+  if (!force && cached && now - cachedTime < 600000) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (parsed && (Array.isArray(parsed) ? parsed.length : (parsed.schedules && parsed.schedules.length))) {
+        return parsed;
+      }
+    } catch (e) {}
+  }
   try {
     const data = await api.getData();
     localStorage.setItem('sheet_cache_data', JSON.stringify(data));
@@ -130,7 +136,7 @@ async function loadData(api, force = false) {
 }
 const schedulesOf = data => (Array.isArray(data) ? data : (data && data.schedules) || []);
 
-// ---------- 4) الستايل ----------
+// ---------- الستايل ----------
 function injectStyles() {
   if (document.getElementById('tt-styles')) return;
   const st = document.createElement('style');
@@ -145,14 +151,12 @@ function injectStyles() {
   .tt-btn{background:#fff;color:var(--ink);border:1.5px solid var(--ink);padding:8px 16px;border-radius:8px;
           cursor:pointer;font:inherit;font-weight:600}
   .tt-btn.on{background:var(--ink);color:#fff}
-  .tt-btn:focus-visible,.tt-sel:focus-visible{outline:3px solid #93a8e8;outline-offset:2px}
   .tt-note{font-size:.85rem;color:var(--mute);margin:4px 2px 14px}
   .tt-filters{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
   .tt-field{display:flex;flex-direction:column;gap:6px}
   .tt-field label{font-weight:600;font-size:.95rem}
   .tt-sel{min-width:190px;padding:10px 14px;border:1.5px solid var(--line);border-radius:10px;background:#fff;
           font:inherit;color:var(--ink);cursor:pointer}
-  .tt-sel:focus{border-color:var(--lec-bd)}
   .tt-banner{background:#fff;border-right:4px solid var(--ok);border-radius:8px;padding:16px 18px;margin-bottom:14px;
              font-weight:600}
   .tt-loading{text-align:center;color:#0284c7;font-weight:700;padding:12px;display:none}
@@ -160,7 +164,7 @@ function injectStyles() {
   .tt-table{width:100%;min-width:860px;border-collapse:collapse;table-layout:fixed}
   .tt-table th{background:var(--head);padding:12px 8px;font-weight:600;border:1px solid var(--line);border-top:0}
   .tt-table td{border:1px solid var(--line);padding:6px;vertical-align:top;height:112px}
-  .tt-table th:first-child,.tt-table td.tt-time{width:112px}
+  .tt-table th:first-child,.tt-table td.tt-time{width:115px}
   .tt-table td.tt-time{background:var(--head);font-weight:600;text-align:center;vertical-align:middle;font-size:.92rem}
   .tt-card{background:var(--lec-bg);border-right:4px solid var(--lec-bd);border-radius:6px;padding:8px 10px;margin-bottom:6px;
            min-height:96px}
@@ -176,12 +180,15 @@ function injectStyles() {
   document.head.appendChild(st);
 }
 
-// ---------- 5) رسم الجدول (مشترك بين الشاشات التلاتة) ----------
-function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
+// ---------- رسم الجدول (بذكاء مزدوج: يقرأ اليوم/الوقت إن وجدا، أو يوزع تلقائياً) ----------
+function cardHtml(item, { showYear = false, doctorExtra = null, forceType = null } = {}) {
   const type = col(item, 'type');
   const doc = col(item, 'doctor');
   const ast = col(item, 'assistant');
-  const isSection = type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (!!ast && !doc);
+  const isSection = forceType !== null
+    ? forceType === 'sec'
+    : (type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (!!ast && !doc));
+
   const subject = col(item, 'subject') || 'مادة';
   const hall = col(item, 'hall');
   const person = isSection ? (ast || doc) : (doc || ast);
@@ -201,28 +208,51 @@ function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
 }
 
 function renderGrid(tbody, items, opts = {}) {
-  // نحدد الساعات من الداتا + الافتراضي
-  const hours = items.map(it => parseHour(col(it, 'start'))).filter(h => h !== null);
-  const first = Math.min(DEFAULT_FIRST_HOUR, ...hours);
-  const last = Math.max(DEFAULT_LAST_HOUR, ...hours);
+  // فحص هل البيانات تحتوي على أعمدة يوم وساعة صريحة أم تحتاج توزيع تلقائي
+  const hasExplicitSlots = items.some(it => normAr(col(it, 'day')) && parseHour(col(it, 'start')) !== null);
 
+  if (hasExplicitSlots) {
+    const hours = items.map(it => parseHour(col(it, 'start'))).filter(h => h !== null);
+    const first = Math.min(DEFAULT_FIRST_HOUR, ...hours);
+    const last = Math.max(DEFAULT_LAST_HOUR, ...hours);
+
+    let html = '';
+    for (let h = first; h <= last; h++) {
+      html += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
+      DAYS.forEach(day => {
+        const cell = items.filter(it =>
+          normAr(col(it, 'day')) === normAr(day) && parseHour(col(it, 'start')) === h);
+        html += `<td>${cell.map(it => cardHtml(it, opts)).join('')}</td>`;
+      });
+      html += '</tr>';
+    }
+    tbody.innerHTML = html;
+    return;
+  }
+
+  // التوزيع التلقائي الميكانيكي من اليمين لليسار (الوقت في أول عمود يمين، ثم السبت -> الخميس)
+  const slots = [9, 10, 11, 12, 13, 14];
   let html = '';
-  for (let h = first; h <= last; h++) {
+  slots.forEach((h, slotIdx) => {
     html += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
-    DAYS.forEach(day => {
-      const cell = items.filter(it =>
-        normAr(col(it, 'day')) === normAr(day) && parseHour(col(it, 'start')) === h);
-      html += `<td>${cell.map(it => cardHtml(it, opts)).join('')}</td>`;
+    DAYS.forEach((day, dayIdx) => {
+      const item = items[slotIdx * DAYS.length + dayIdx] || null;
+      if (item) {
+        const forceType = slotIdx % 2 === 0 ? 'lec' : 'sec';
+        html += `<td>${cardHtml(item, { ...opts, forceType })}</td>`;
+      } else {
+        html += '<td></td>';
+      }
     });
     html += '</tr>';
-  }
+  });
   tbody.innerHTML = html;
 }
 
 const TABLE_HEAD = `
   <thead><tr><th>الوقت</th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr></thead>`;
 
-// ---------- 6) شاشة منسق الجداول ----------
+// ---------- شاشة منسق الجداول ----------
 class SchedulerView {
   constructor(api) {
     this.api = api;
@@ -257,19 +287,18 @@ class SchedulerView {
     try { data = await loadData(this.api, force); } finally { loading.style.display = 'none'; }
     this.schedules = schedulesOf(data);
 
-    // المجموعات
-    const groups = new Map(); // value -> label
+    const groups = new Map();
     (data.groups || []).forEach(g => {
       const y = g['الفرقة'] || '', n = g['المجموعة'] || '';
-      if (y) groups.set(`group:${y}|${groupKey(n || '1')}`, `${y} - مجموعة ${groupKey(n || '1')}`);
+      if (y) groups.set(`group:${y}|${n}`, `${y} - مجموعة ${n || '1'}`);
     });
     this.schedules.forEach(it => {
-      const y = col(it, 'year'), g = col(it, 'group');
-      if (y && g) groups.set(`group:${y}|${groupKey(g)}`, `${y} - مجموعة ${groupKey(g)}`);
-      else if (y && !groups.size) groups.set(`group:${y}|`, y);
+      const y = col(it, 'year');
+      const g = col(it, 'group') || col(it, 'dept');
+      if (y && g) groups.set(`group:${y}|${g}`, `${y} - ${g}`);
+      else if (y) groups.set(`group:${y}|`, y);
     });
 
-    // الدكاترة
     const inst = new Set();
     (data.instructors || []).forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
     this.schedules.forEach(it => {
@@ -280,7 +309,7 @@ class SchedulerView {
     const sel = document.getElementById('schFilter');
     const cur = this.selected;
     sel.innerHTML = '<option value="">-- عرض الكل --</option>';
-    const og1 = document.createElement('optgroup'); og1.label = 'المجموعات';
+    const og1 = document.createElement('optgroup'); og1.label = 'المجموعات والفرق';
     [...groups.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ar')).forEach(([v, l]) => {
       og1.appendChild(new Option(l, v));
     });
@@ -306,7 +335,7 @@ class SchedulerView {
   }
 }
 
-// ---------- 7) شاشة الدكتور / المعيد ----------
+// ---------- شاشة الدكتور / المعيد ----------
 class DoctorView {
   constructor(api) {
     this.api = api;
@@ -396,12 +425,12 @@ class DoctorView {
   }
 }
 
-// ---------- 8) شاشة الطالب (فرقة + مجموعة) ----------
+// ---------- شاشة الطالب ----------
 class StudentView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.groupRows = []; // [{year, group}]
+    this.groupRows = [];
     this.year = '';
     this.group = '';
   }
@@ -415,7 +444,7 @@ class StudentView {
           <select id="stYear" class="tt-sel"></select>
         </div>
         <div class="tt-field">
-          <label for="stGroup">المجموعة</label>
+          <label for="stGroup">المجموعة / القسم</label>
           <select id="stGroup" class="tt-sel" style="min-width:240px"></select>
         </div>
       </div>
@@ -436,18 +465,17 @@ class StudentView {
     const data = await loadData(this.api);
     this.schedules = schedulesOf(data);
 
-    // المجموعات من شيت المجموعات، ولو مش موجود من الجدول نفسه
     const seen = new Set();
     const rows = [];
     const add = (year, grp) => {
       if (!year) return;
-      const k = `${normAr(year)}|${groupKey(grp)}`;
+      const k = `${normAr(year)}|${normAr(grp)}`;
       if (seen.has(k)) return;
       seen.add(k);
-      rows.push({ year, group: grp ? groupKey(grp) : '' });
+      rows.push({ year, group: grp || '' });
     };
     (data.groups || []).forEach(g => add(g['الفرقة'], g['المجموعة']));
-    this.schedules.forEach(it => add(col(it, 'year'), col(it, 'group')));
+    this.schedules.forEach(it => add(col(it, 'year'), col(it, 'group') || col(it, 'dept')));
     this.groupRows = rows;
 
     const years = sortYears([...new Set(rows.map(r => r.year))]);
@@ -470,7 +498,7 @@ class StudentView {
       .filter(Boolean);
     const uniq = [...new Set(groups)].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
     if (!uniq.length) gSel.appendChild(new Option('كل المجموعات', ''));
-    uniq.forEach(g => gSel.appendChild(new Option(`${this.year} - مجموعة ${g}`, g)));
+    uniq.forEach(g => gSel.appendChild(new Option(`${this.year} - ${g}`, g)));
     if (!this.group || !uniq.includes(this.group)) this.group = uniq[0] || '';
     gSel.value = this.group;
   }
@@ -483,7 +511,7 @@ class StudentView {
   }
 }
 
-// ---------- 9) التطبيق الرئيسي ----------
+// ---------- التطبيق الرئيسي ----------
 export class App {
   constructor(container, api) {
     this.container = container;
