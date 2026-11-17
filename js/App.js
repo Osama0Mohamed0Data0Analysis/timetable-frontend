@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — ربط كامل ومباشر للأزرار الأربعة من Google Sheets
+//  نظام الجداول — الكود الكامل والمصحح بدون أخطاء
 // =====================================================================
 
 const COLS = {
@@ -244,7 +244,7 @@ function renderGrid(tbody, items, opts = {}) {
 const TABLE_HEAD = `
   <thead><tr><th>الوقت</th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr></thead>`;
 
-// ---------- 6) شاشة منسق الجداول بأزرار منفصلة ----------
+// ---------- شاشة منسق الجداول ----------
 class SchedulerView {
   constructor(api) {
     this.api = api;
@@ -293,18 +293,16 @@ class SchedulerView {
 
   async refresh(force) {
     const loading = document.getElementById('schLoading');
-    loading.style.display = 'block';
+    if (loading) loading.style.display = 'block';
     let data;
-    try { data = await loadData(this.api, force); } finally { loading.style.display = 'none'; }
+    try { data = await loadData(this.api, force); } finally { if (loading) loading.style.display = 'none'; }
     this.schedules = schedulesOf(data);
 
-    // سحب البيانات الحقيقية مباشرة من الجوجل شيت لجميع الأزرار الأربعة
     const years = new Set();
     const depts = new Set();
     const groups = new Set();
     const instructors = new Set();
 
-    // 1. جلب البيانات من جداول الإعدادات الخاصة (Groups & Instructors) إن وجدت في الشيت
     if (data.groups && Array.isArray(data.groups)) {
       data.groups.forEach(g => {
         const y = g['الفرقة'] || g.year;
@@ -323,7 +321,6 @@ class SchedulerView {
       });
     }
 
-    // 2. تكميل البيانات من جدول الحصص (Schedules) لضمان شمولية الشيت بالكامل
     this.schedules.forEach(it => {
       const y = col(it, 'year');
       const d = col(it, 'dept');
@@ -335,7 +332,6 @@ class SchedulerView {
       splitNames(col(it, 'assistant')).forEach(n => instructors.add(n));
     });
 
-    // تعبئة القوائم الأربعة بالبيانات المستخرجة فعلياً من الشيت
     this.populateSelect('selYear', sortYears([...years]), this.filters.year, '-- كل الفرق --');
     this.populateSelect('selDept', [...depts].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.dept, '-- كل الأقسام --');
     this.populateSelect('selGroup', [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.group, '-- كل المجموعات --');
@@ -368,7 +364,7 @@ class SchedulerView {
   }
 }
 
-// ---------- 7) شاشة الدكتور / المعيد ----------
+// ---------- شاشة الدكتور / المعيد ----------
 class DoctorView {
   constructor(api) {
     this.api = api;
@@ -416,10 +412,12 @@ class DoctorView {
     const list = [...inst].sort((a, b) => a.localeCompare(b, 'ar'));
 
     const sel = document.getElementById('docSelect');
-    sel.innerHTML = '<option value="">-- اختر الدكتور --</option>';
-    list.forEach(n => sel.appendChild(new Option(n, n)));
-    if (!this.selected && list.length) this.selected = list[0];
-    sel.value = this.selected;
+    if (sel) {
+      sel.innerHTML = '<option value="">-- اختر الدكتور --</option>';
+      list.forEach(n => sel.appendChild(new Option(n, n)));
+      if (!this.selected && list.length) this.selected = list[0];
+      sel.value = this.selected;
+    }
     this.build();
   }
 
@@ -460,7 +458,7 @@ class DoctorView {
   }
 }
 
-// ---------- 8) شاشة الطالب ----------
+// ---------- شاشة الطالب ----------
 class StudentView {
   constructor(api) {
     this.api = api;
@@ -519,16 +517,20 @@ class StudentView {
     const gList = [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}));
 
     const ySel = document.getElementById('stYear');
-    ySel.innerHTML = '';
-    yList.forEach(y => ySel.appendChild(new Option(y, y)));
-    if (!this.year || !yList.includes(this.year)) this.year = yList[0] || '';
-    ySel.value = this.year;
+    if (ySel) {
+      ySel.innerHTML = '';
+      yList.forEach(y => ySel.appendChild(new Option(y, y)));
+      if (!this.year || !yList.includes(this.year)) this.year = yList[0] || '';
+      ySel.value = this.year;
+    }
 
     const gSel = document.getElementById('stGroup');
-    gSel.innerHTML = '<option value="">-- كل المجموعات --</option>';
-    gList.forEach(g => gSel.appendChild(new Option(g, g)));
-    if (!this.group || !gList.includes(this.group)) this.group = '';
-    gSel.value = this.group;
+    if (gSel) {
+      gSel.innerHTML = '<option value="">-- كل المجموعات --</option>';
+      gList.forEach(g => gSel.appendChild(new Option(g, g)));
+      if (!this.group || !gList.includes(this.group)) this.group = '';
+      gSel.value = this.group;
+    }
 
     this.build();
   }
@@ -536,4 +538,50 @@ class StudentView {
   build() {
     const tbody = document.getElementById('stBody');
     if (!tbody) return;
-    const items = this.schedules.filter(it => matchesFilter(it, {
+    const items = this.schedules.filter(it => matchesFilter(it, { year: this.year, group: this.group }));
+    renderGrid(tbody, items);
+  }
+}
+
+// ---------- التطبيق الرئيسي ----------
+export class App {
+  constructor(container, api) {
+    this.container = container;
+    this.api = api;
+  }
+
+  async start() {
+    injectStyles();
+    this.container.innerHTML = `
+      <div class="tt">
+        <div class="tt-nav">
+          <button id="navScheduler" class="tt-btn">1) منسق الجداول</button>
+          <button id="navDoctor" class="tt-btn">2) دكتور / معيد</button>
+          <button id="navStudent" class="tt-btn">3) طالب</button>
+        </div>
+        <div id="viewContainer"></div>
+      </div>`;
+
+    document.getElementById('navScheduler').onclick = () => this.switchView('scheduler');
+    document.getElementById('navDoctor').onclick = () => this.switchView('doctor');
+    document.getElementById('navStudent').onclick = () => this.switchView('student');
+    this.switchView('scheduler');
+  }
+
+  async switchView(name) {
+    const btns = { scheduler: 'navScheduler', doctor: 'navDoctor', student: 'navStudent' };
+    Object.entries(btns).forEach(([k, id]) => {
+      const b = document.getElementById(id);
+      if (b) b.classList.toggle('on', k === name);
+    });
+
+    const vc = document.getElementById('viewContainer');
+    if (vc) {
+      vc.innerHTML = '<div class="tt-loading" style="display:block">جاري التحميل...</div>';
+
+      const views = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
+      const view = new views[name](this.api);
+      await view.mount(vc);
+    }
+  }
+}
