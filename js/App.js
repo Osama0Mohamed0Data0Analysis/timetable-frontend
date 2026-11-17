@@ -49,7 +49,7 @@ class SchedulerView {
         </div>
 
         <div style="background: white; padding: 20px; border-radius: 8px; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div id="loading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px;">جاري جلب البيانات من Google Sheets...</div>
+          <div id="loading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px; display: none;">جاري تحديث البيانات من Google Sheets...</div>
           <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
@@ -69,21 +69,45 @@ class SchedulerView {
       </div>
     `;
 
-    document.getElementById('btnRefresh').addEventListener('click', () => this.refreshData());
+    document.getElementById('btnRefresh').addEventListener('click', () => this.refreshData(true));
     document.getElementById('btnGenerate').addEventListener('click', () => { alert("تم تحديث وتوليد الجدول ميكانيكياً."); this.buildGrid(); });
     document.getElementById('filterDropdown').addEventListener('change', (e) => {
       this.selectedValue = e.target.value;
       this.buildGrid();
     });
 
-    await this.refreshData();
+    await this.refreshData(false);
   }
 
-  async refreshData() {
+  async refreshData(forceUpdate = false) {
     const loading = document.getElementById('loading');
-    if (loading) loading.style.display = 'block';
+    
+    // التحقق من وجود تخزين مؤقت (Cache) لسرعة الفتح الفوري
+    let rawData = null;
+    const cachedData = localStorage.getItem('sheet_cache_data');
+    const cachedTime = localStorage.getItem('sheet_cache_time');
+    const now = new Date().getTime();
 
-    const data = await this.api.getData();
+    // إذا لم يكن هناك تحديث اجباري، والبيانات مخزنة منذ أقل من 10 دقائق، استخدم الكاش فوراً
+    if (!forceUpdate && cachedData && cachedTime && (now - cachedTime < 600000)) {
+      rawData = JSON.parse(cachedData);
+    } else {
+      if (loading) loading.style.display = 'block';
+      try {
+        rawData = await this.api.getData();
+        localStorage.setItem('sheet_cache_data', JSON.stringify(rawData));
+        localStorage.setItem('sheet_cache_time', now);
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        if (cachedData) rawData = JSON.parse(cachedData); // Fallback to cache if offline
+      }
+      if (loading) loading.style.display = 'none';
+    }
+
+    this.processData(rawData);
+  }
+
+  processData(data) {
     this.schedules = Array.isArray(data) ? data : (data.schedules || []);
     const rawInstructors = data.instructors || [];
     const groupsData = data.groups || [];
@@ -119,29 +143,21 @@ class SchedulerView {
 
     const select = document.getElementById('filterDropdown');
     if (select) {
+      const currentVal = this.selectedValue;
       select.innerHTML = `<option value="">-- عرض الكل --</option>`;
       const groupOptGroup = document.createElement('optgroup');
       groupOptGroup.label = "المجموعات";
       this.groupsList.forEach(g => {
         const opt = document.createElement('option');
-        opt.value = `group:${g}`;
-        opt.textContent = g;
-        groupOptGroup.appendChild(opt);
-      });
-      select.appendChild(groupOptGroup);
-
-      const instOptGroup = document.createElement('optgroup');
-      instOptGroup.label = "الدكاترة والمعيدين";
-      this.instructorsList.forEach(inst => {
-        const opt = document.createElement('option');
-        opt.value = `inst:${inst}`;
+        opt.value = `group:${g}`; opt.textContent = g; groupOptGroup.appendChild(opt); }); select.appendChild(groupOptGroup);  const instOptGroup = document.createElement('optgroup'); instOptGroup.label = "الدكاترة والمعيدين"; this.instructorsList.forEach(inst => { const opt = document.createElement('option'); opt.value = `inst:${inst}`;
         opt.textContent = inst;
         instOptGroup.appendChild(opt);
       });
       select.appendChild(instOptGroup);
+      
+      if (currentVal) select.value = currentVal;
     }
 
-    if (loading) loading.style.display = 'none';
     this.buildGrid();
   }
 
@@ -189,9 +205,9 @@ class SchedulerView {
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+              <div style="background: ${bgCard}; border: 1px solid${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
+                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} -${hall}</div>
                 <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
               </div>
             </td>
@@ -270,7 +286,7 @@ class DoctorView {
         </div>
 
         <div style="background: white; padding: 20px; border-radius: 8px; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div id="docLoading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px;">جاري جلب جدول الدكتور من Google Sheets...</div>
+          <div id="docLoading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px; display: none;">جاري تحديث جدول الدكتور...</div>
           <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
@@ -302,10 +318,14 @@ class DoctorView {
   }
 
   async refreshData() {
-    const loading = document.getElementById('docLoading');
-    if (loading) loading.style.display = 'block';
+    const cachedData = localStorage.getItem('sheet_cache_data');
+    let data = cachedData ? JSON.parse(cachedData) : null;
 
-    const data = await this.api.getData();
+    if (!data) {
+      data = await this.api.getData();
+      localStorage.setItem('sheet_cache_data', JSON.stringify(data));
+    }
+
     this.schedules = Array.isArray(data) ? data : (data.schedules || []);
     this.requests = data.requests || [];
     const rawInstructors = data.instructors || [];
@@ -326,6 +346,7 @@ class DoctorView {
     this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
     const select = document.getElementById('doctorSelect');
     if (select) {
+      const currentVal = this.selectedInstructor;
       select.innerHTML = `<option value="">-- اختر الدكتور --</option>`;
       this.instructorsList.forEach(name => {
         const opt = document.createElement('option');
@@ -335,11 +356,11 @@ class DoctorView {
       });
       if (this.instructorsList.length > 0 && !this.selectedInstructor) {
         this.selectedInstructor = this.instructorsList[0];
-        select.value = this.selectedInstructor;
       }
+      if (currentVal) select.value = currentVal;
+      else if (this.selectedInstructor) select.value = this.selectedInstructor;
     }
 
-    if (loading) loading.style.display = 'none';
     this.buildDoctorGrid();
   }
 
@@ -384,10 +405,10 @@ class DoctorView {
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+              <div style="background: ${bgCard}; border: 1px solid${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
-                <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 6px;">${yearLevel} ${dept ? '- ' + dept : ''}</div>
+                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} -${hall}</div>
+                <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 6px;">${yearLevel}${dept ? '- ' + dept : ''}</div>
                 
                 ${statusText ? 
                   `<div style="font-size: 0.8rem; font-weight: bold; color: ${statusText === 'تمت الموافقة' ? '#10b981' : (statusText === 'مرفوض' ? '#ef4444' : '#d97706')}; margin-bottom: 4px;">${statusText}</div>` : 
@@ -409,14 +430,11 @@ class DoctorView {
     tbody.querySelectorAll('.btn-apology').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const subj = e.target.dataset.subject;
-        if (confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) {
-          await this.api.sendAction({
-            action: "addRequest",
-            doctorName: this.selectedInstructor,
-            details: `اعتذار عن مادة ${subj}`,
+        if (confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) { await this.api.sendAction({ action: "addRequest", doctorName: this.selectedInstructor, details: `اعتذار عن مادة ${subj}`,
             reason: this.selectedReason
           });
           alert("تم إرسال طلب الاعتذار للمنسق بنجاح!");
+          localStorage.removeItem('sheet_cache_data'); // مسح الكاش لتحديث الطلبات
           await this.refreshData();
         }
       });
@@ -424,7 +442,7 @@ class DoctorView {
   }
 }
 
-// --- 3. Student View (بوابة الطالب المطابقة للصورة السابعة) ---
+// --- 3. Student View (بوابة الطالب) ---
 class StudentView {
   constructor(api) {
     this.api = api;
@@ -463,16 +481,12 @@ class StudentView {
   async mount(container) {
     container.innerHTML = `
       <div style="padding: 10px; direction: rtl; text-align: right; font-family: system-ui, sans-serif; background: #f8fafc; min-height: 100vh;">
-        
-        <!-- شريط الفلاتر العلوي (الفرقة والمجموعة) تماماً مثل الصورة السابعة -->
         <div style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 15px; flex-wrap: wrap;">
-          
           <div style="display: flex; gap: 8px; align-items: center;">
             <select id="studentGroupSelect" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; min-width: 180px; cursor: pointer; color: #0369a1; font-weight: 500;">
               <option value="">-- اختر المجموعة --</option>
             </select>
           </div>
-
           <div style="display: flex; gap: 8px; align-items: center;">
             <select id="studentYearSelect" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; min-width: 180px; cursor: pointer; color: #0369a1; font-weight: 500;">
               <option value="">-- اختر الفرقة --</option>
@@ -480,14 +494,12 @@ class StudentView {
           </div>
         </div>
 
-        <!-- رسالة الحالة تماماً مثل الصورة السابعة -->
         <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 10px 15px; border-radius: 6px; font-size: 0.85rem; color: #166534; margin-bottom: 15px; font-weight: 500;">
           جدولك محدث. مفيش تغييرات.
         </div>
 
-        <!-- جدول الطالب الشبكي -->
         <div style="background: white; padding: 20px; border-radius: 8px; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div id="studentLoading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px;">جاري جلب جدول الطالب من Google Sheets...</div>
+          <div id="studentLoading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px; display: none;">جاري تحديث جدول الطالب...</div>
           <table style="width: 100%; border-collapse: collapse; text-align: center; min-width: 950px;" border="0">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
@@ -520,10 +532,14 @@ class StudentView {
   }
 
   async refreshData() {
-    const loading = document.getElementById('studentLoading');
-    if (loading) loading.style.display = 'block';
+    const cachedData = localStorage.getItem('sheet_cache_data');
+    let data = cachedData ? JSON.parse(cachedData) : null;
 
-    const data = await this.api.getData();
+    if (!data) {
+      data = await this.api.getData();
+      localStorage.setItem('sheet_cache_data', JSON.stringify(data));
+    }
+
     this.schedules = Array.isArray(data) ? data : (data.schedules || []);
 
     const yearSet = new Set();
@@ -534,7 +550,7 @@ class StudentView {
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
       if (yL) {
         yearSet.add(yL);
-        groupSet.add(dept ? `${yL} - ${dept}` : yL);
+        groupSet.add(dept ? `${yL} -${dept}` : yL);
       }
     });
 
@@ -543,6 +559,7 @@ class StudentView {
 
     const yearSelect = document.getElementById('studentYearSelect');
     if (yearSelect) {
+      const currentVal = this.selectedYear;
       yearSelect.innerHTML = `<option value="">-- اختر الفرقة --</option>`;
       this.yearsList.forEach(y => {
         const opt = document.createElement('option');
@@ -552,12 +569,14 @@ class StudentView {
       });
       if (this.yearsList.length > 0 && !this.selectedYear) {
         this.selectedYear = this.yearsList[0];
-        yearSelect.value = this.selectedYear;
       }
+      if (currentVal) yearSelect.value = currentVal;
+      else if (this.selectedYear) yearSelect.value = this.selectedYear;
     }
 
     const groupSelect = document.getElementById('studentGroupSelect');
     if (groupSelect) {
+      const currentVal = this.selectedGroup;
       groupSelect.innerHTML = `<option value="">-- اختر المجموعة --</option>`;
       this.groupsList.forEach(g => {
         const opt = document.createElement('option');
@@ -567,11 +586,11 @@ class StudentView {
       });
       if (this.groupsList.length > 0 && !this.selectedGroup) {
         this.selectedGroup = this.groupsList[0];
-        groupSelect.value = this.selectedGroup;
       }
+      if (currentVal) groupSelect.value = currentVal;
+      else if (this.selectedGroup) groupSelect.value = this.selectedGroup;
     }
 
-    if (loading) loading.style.display = 'none';
     this.buildStudentGrid();
   }
 
@@ -594,7 +613,7 @@ class StudentView {
     const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
     const days = ["الخميس", "الأربعاء", "الثلاثاء", "الإثنين", "الأحد", "السبت"];
 
-    timeSlots.forEach((slot, slotIndex) => {
+    timeSlots.executeEach ? null : timeSlots.forEach((slot, slotIndex) => {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid #e2e8f0';
       tr.style.height = '100px';
@@ -614,9 +633,9 @@ class StudentView {
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+              <div style="background: ${bgCard}; border: 1px solid${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
+                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} -${hall}</div>
                 <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
               </div>
             </td>
@@ -646,43 +665,4 @@ export class App {
         <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 10px;">
           <button id="navScheduler" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">1) منسق الجداول</button>
           <button id="navDoctor" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">2) دكتور / معيد</button>
-          <button id="navStudent" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">3) طالب</button>
-        </div>
-        <div id="viewContainer"></div>
-      </div>
-    `;
-
-    document.getElementById('navScheduler').addEventListener('click', () => this.switchView('scheduler'));
-    document.getElementById('navDoctor').addEventListener('click', () => this.switchView('doctor'));
-    document.getElementById('navStudent').addEventListener('click', () => this.switchView('student'));
-
-    this.switchView('scheduler');
-  }
-
-  async switchView(viewName) {
-    const sBtn = document.getElementById('navScheduler');
-    const dBtn = document.getElementById('navDoctor');
-    const stBtn = document.getElementById('navStudent');
-
-    [sBtn, dBtn, stBtn].forEach(b => {
-      if (b) { b.style.background = '#f1f5f9'; b.style.color = '#334155'; b.style.border = '1px solid #cbd5e1'; }
-    });
-
-    const vc = document.getElementById('viewContainer');
-    vc.innerHTML = `<div style="text-align: center; padding: 30px; color: #0284c7; font-weight: bold;">جاري التحميل...</div>`;
-    
-    if (viewName === 'scheduler') {
-      sBtn.style.background = '#1e293b'; sBtn.style.color = 'white'; sBtn.style.border = 'none';
-      const v = new SchedulerView(this.api);
-      await v.mount(vc);
-    } else if (viewName === 'doctor') {
-      dBtn.style.background = '#1e293b'; dBtn.style.color = 'white'; dBtn.style.border = 'none';
-      const v = new DoctorView(this.api);
-      await v.mount(vc);
-    } else if (viewName === 'student') {
-      stBtn.style.background = '#1e293b'; stBtn.style.color = 'white'; stBtn.style.border = 'none';
-      const v = new StudentView(this.api);
-      await v.mount(vc);
-    }
-  }
-}
+          <button id="navStudent" style="background: #
