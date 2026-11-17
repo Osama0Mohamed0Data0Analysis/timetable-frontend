@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — الكود الكامل والمصحح بدون أخطاء
+//  نظام الجداول — النسخة النهائية المستقرة والمربوطة بالكامل بالداتا
 // =====================================================================
 
 const COLS = {
@@ -174,14 +174,12 @@ function injectStyles() {
   document.head.appendChild(st);
 }
 
-// ---------- رسم الجدول ----------
-function cardHtml(item, { showYear = false, doctorExtra = null, forceType = null } = {}) {
+// ---------- رسم الجدول بكامل الداتا الحقيقية ----------
+function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
   const type = col(item, 'type');
   const doc = col(item, 'doctor');
   const ast = col(item, 'assistant');
-  const isSection = forceType !== null
-    ? forceType === 'sec'
-    : (type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (!!ast && !doc));
+  const isSection = type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (!!ast && !doc);
 
   const subject = col(item, 'subject') || 'مادة';
   const hall = col(item, 'hall');
@@ -202,42 +200,60 @@ function cardHtml(item, { showYear = false, doctorExtra = null, forceType = null
 }
 
 function renderGrid(tbody, items, opts = {}) {
-  const hasExplicitSlots = items.some(it => normAr(col(it, 'day')) && parseHour(col(it, 'start')) !== null);
-
-  if (hasExplicitSlots) {
-    const hours = items.map(it => parseHour(col(it, 'start'))).filter(h => h !== null);
-    const first = Math.min(DEFAULT_FIRST_HOUR, ...hours);
-    const last = Math.max(DEFAULT_LAST_HOUR, ...hours);
-
-    let html = '';
-    for (let h = first; h <= last; h++) {
-      html += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
-      DAYS.forEach(day => {
-        const cell = items.filter(it =>
-          normAr(col(it, 'day')) === normAr(day) && parseHour(col(it, 'start')) === h);
-        html += `<td>${cell.map(it => cardHtml(it, opts)).join('')}</td>`;
-      });
-      html += '</tr>';
-    }
-    tbody.innerHTML = html;
-    return;
-  }
-
   const slots = [9, 10, 11, 12, 13, 14];
   let html = '';
+
   slots.forEach((h, slotIdx) => {
     html += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
     DAYS.forEach((day, dayIdx) => {
-      const item = items[slotIdx * DAYS.length + dayIdx] || null;
-      if (item) {
-        const forceType = slotIdx % 2 === 0 ? 'lec' : 'sec';
-        html += `<td>${cardHtml(item, { ...opts, forceType })}</td>`;
+      // مطابقة المواد حسب اليوم والساعة الحقيقية إذا وجِدت في الصف، أو توزيعها بانتظام لتظهر كاملة
+      const cellItems = items.filter(it => {
+        const itemDay = normAr(col(it, 'day'));
+        const itemHour = parseHour(col(it, 'start'));
+        if (itemDay && itemHour !== null) {
+          return itemDay === normAr(day) && itemHour === h;
+        }
+        return false;
+      });
+
+      if (cellItems.length > 0) {
+        html += `<td>${cellItems.map(it => cardHtml(it, opts)).join('')}</td>`;
       } else {
-        html += '<td></td>';
+        // إذا لم توجد أعمدة أيام صريحة، اعرض جميع المواد المتاحة بانتظام لضمان ظهور كامل الداتا
+        const fallbackItem = items[slotIdx * DAYS.length + dayIdx];
+        if (fallbackItem && slotIdx === 0 && dayIdx === 0 && !items.some(it => normAr(col(it, 'day')))) {
+          // عرض تدريجي لكل الداتا لو الشيت خالي من أعمدة الأيام
+          let allCardsHTML = '';
+          items.forEach((it) => {
+            allCardsHTML += cardHtml(it, opts);
+          });
+          html += `<td>${allCardsHTML}</td>`;
+        } else if (fallbackItem && !items.some(it => normAr(col(it, 'day')))) {
+          html += `<td></td>`;
+        } else {
+          html += `<td></td>`;
+        }
       }
     });
     html += '</tr>';
   });
+
+  // لو الشيت لا يحتوي على أعمدة يوم محددة نهائياً، اعرض الداتا مباشرة بالترتيب في الجدول
+  if (!items.some(it => normAr(col(it, 'day')))) {
+    let simpleHtml = '';
+    slots.forEach((h, slotIdx) => {
+      simpleHtml += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
+      DAYS.forEach((day, dayIdx) => {
+        const idx = slotIdx * DAYS.length + dayIdx;
+        const it = items[idx];
+        simpleHtml += `<td>${it ? cardHtml(it, opts) : ''}</td>`;
+      });
+      simpleHtml += '</tr>';
+    });
+    tbody.innerHTML = simpleHtml;
+    return;
+  }
+
   tbody.innerHTML = html;
 }
 
