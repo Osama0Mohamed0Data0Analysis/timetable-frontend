@@ -149,7 +149,17 @@ class SchedulerView {
       groupOptGroup.label = "المجموعات";
       this.groupsList.forEach(g => {
         const opt = document.createElement('option');
-        opt.value = `group:${g}`; opt.textContent = g; groupOptGroup.appendChild(opt); }); select.appendChild(groupOptGroup);  const instOptGroup = document.createElement('optgroup'); instOptGroup.label = "الدكاترة والمعيدين"; this.instructorsList.forEach(inst => { const opt = document.createElement('option'); opt.value = `inst:${inst}`;
+        opt.value = `group:${g}`;
+        opt.textContent = g;
+        groupOptGroup.appendChild(opt);
+      });
+      select.appendChild(groupOptGroup);
+
+      const instOptGroup = document.createElement('optgroup');
+      instOptGroup.label = "الدكاترة والمعيدين";
+      this.instructorsList.forEach(inst => {
+        const opt = document.createElement('option');
+        opt.value = `inst:${inst}`;
         opt.textContent = inst;
         instOptGroup.appendChild(opt);
       });
@@ -205,9 +215,9 @@ class SchedulerView {
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} -${hall}</div>
+                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
                 <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
               </div>
             </td>
@@ -405,10 +415,10 @@ class DoctorView {
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} -${hall}</div>
-                <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 6px;">${yearLevel}${dept ? '- ' + dept : ''}</div>
+                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
+                <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 6px;">${yearLevel} ${dept ? '- ' + dept : ''}</div>
                 
                 ${statusText ? 
                   `<div style="font-size: 0.8rem; font-weight: bold; color: ${statusText === 'تمت الموافقة' ? '#10b981' : (statusText === 'مرفوض' ? '#ef4444' : '#d97706')}; margin-bottom: 4px;">${statusText}</div>` : 
@@ -430,7 +440,11 @@ class DoctorView {
     tbody.querySelectorAll('.btn-apology').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const subj = e.target.dataset.subject;
-        if (confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) { await this.api.sendAction({ action: "addRequest", doctorName: this.selectedInstructor, details: `اعتذار عن مادة ${subj}`,
+        if (confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) {
+          await this.api.sendAction({
+            action: "addRequest",
+            doctorName: this.selectedInstructor,
+            details: `اعتذار عن مادة ${subj}`,
             reason: this.selectedReason
           });
           alert("تم إرسال طلب الاعتذار للمنسق بنجاح!");
@@ -550,7 +564,7 @@ class StudentView {
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
       if (yL) {
         yearSet.add(yL);
-        groupSet.add(dept ? `${yL} -${dept}` : yL);
+        groupSet.add(dept ? `${yL} - ${dept}` : yL);
       }
     });
 
@@ -633,9 +647,9 @@ class StudentView {
 
           rowHtml += `
             <td style="padding: 8px; border-left: 1px solid #e2e8f0; vertical-align: middle;">
-              <div style="background: ${bgCard}; border: 1px solid${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+              <div style="background: ${bgCard}; border: 1px solid ${borderCard}; border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
                 <div style="font-weight: bold; color: #1e293b; font-size: 0.95rem; margin-bottom: 3px;">${subject}</div>
-                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} -${hall}</div>
+                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 2px;">${typeLabel} - ${hall}</div>
                 <div style="font-size: 0.8rem; color: #0369a1; font-weight: 500;">${doctor}</div>
               </div>
             </td>
@@ -665,4 +679,43 @@ export class App {
         <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 10px;">
           <button id="navScheduler" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">1) منسق الجداول</button>
           <button id="navDoctor" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">2) دكتور / معيد</button>
-          <button id="navStudent" style="background: #
+          <button id="navStudent" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">3) طالب</button>
+        </div>
+        <div id="viewContainer"></div>
+      </div>
+    `;
+
+    document.getElementById('navScheduler').addEventListener('click', () => this.switchView('scheduler'));
+    document.getElementById('navDoctor').addEventListener('click', () => this.switchView('doctor'));
+    document.getElementById('navStudent').addEventListener('click', () => this.switchView('student'));
+
+    this.switchView('scheduler');
+  }
+
+  async switchView(viewName) {
+    const sBtn = document.getElementById('navScheduler');
+    const dBtn = document.getElementById('navDoctor');
+    const stBtn = document.getElementById('navStudent');
+
+    [sBtn, dBtn, stBtn].forEach(b => {
+      if (b) { b.style.background = '#f1f5f9'; b.style.color = '#334155'; b.style.border = '1px solid #cbd5e1'; }
+    });
+
+    const vc = document.getElementById('viewContainer');
+    vc.innerHTML = `<div style="text-align: center; padding: 30px; color: #0284c7; font-weight: bold;">جاري التحميل الفوري...</div>`;
+    
+    if (viewName === 'scheduler') {
+      sBtn.style.background = '#1e293b'; sBtn.style.color = 'white'; sBtn.style.border = 'none';
+      const v = new SchedulerView(this.api);
+      await v.mount(vc);
+    } else if (viewName === 'doctor') {
+      dBtn.style.background = '#1e293b'; dBtn.style.color = 'white'; dBtn.style.border = 'none';
+      const v = new DoctorView(this.api);
+      await v.mount(vc);
+    } else if (viewName === 'student') {
+      stBtn.style.background = '#1e293b'; stBtn.style.color = 'white'; stBtn.style.border = 'none';
+      const v = new StudentView(this.api);
+      await v.mount(vc);
+    }
+  }
+}
