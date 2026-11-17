@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — النسخة النهائية المستقرة والمربوطة بالكامل بالداتا
+//  نظام الجداول — عرض تفاصيل القاعات (رقم القاعة، المبنى، الدور) في الكروت
 // =====================================================================
 
 const COLS = {
@@ -8,6 +8,8 @@ const COLS = {
   type:      ['النوع', 'نوع الحصة', 'type'],
   subject:   ['اسم المادة *', 'اسم المادة', 'subject'],
   hall:      ['القاعة', 'رقم القاعة', 'اسم القاعة', 'hall', 'room', 'نوع القاعة المطلوبة *'],
+  building:  ['المبنى', '* المبنى', 'building'],
+  floor:     ['الدور', '* الدور', 'floor'],
   doctor:    ['د. المحاضرة *', 'د. المحاضرة', 'doctor'],
   assistant: ['المعيدين / السكاشن', 'assistant'],
   year:      ['الفرقة *', 'الفرقة', 'yearLevel'],
@@ -157,15 +159,15 @@ function injectStyles() {
   .tt-wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
   .tt-table{width:100%;min-width:860px;border-collapse:collapse;table-layout:fixed}
   .tt-table th{background:var(--head);padding:12px 8px;font-weight:600;border:1px solid var(--line);border-top:0}
-  .tt-table td{border:1px solid var(--line);padding:6px;vertical-align:top;height:112px}
+  .tt-table td{border:1px solid var(--line);padding:6px;vertical-align:top;height:120px}
   .tt-table th:first-child,.tt-table td.tt-time{width:115px}
   .tt-table td.tt-time{background:var(--head);font-weight:600;text-align:center;vertical-align:middle;font-size:.92rem}
   .tt-card{background:var(--lec-bg);border-right:4px solid var(--lec-bd);border-radius:6px;padding:8px 10px;margin-bottom:6px;
-           min-height:96px}
+           min-height:102px}
   .tt-card:last-child{margin-bottom:0}
   .tt-card.sec{background:var(--sec-bg);border-right-color:var(--sec-bd)}
   .tt-subj{font-weight:700;font-size:.95rem;line-height:1.35;margin-bottom:4px}
-  .tt-meta{font-size:.8rem;color:var(--mute);line-height:1.55}
+  .tt-meta{font-size:.78rem;color:var(--mute);line-height:1.45}
   .tt-status{font-size:.8rem;font-weight:700;margin-top:6px}
   .tt-apology{margin-top:6px;background:#fff;border:1px solid #c4cadb;border-radius:6px;padding:3px 12px;
               font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
@@ -174,7 +176,7 @@ function injectStyles() {
   document.head.appendChild(st);
 }
 
-// ---------- رسم الجدول بكامل الداتا الحقيقية ----------
+// ---------- رسم الكروت مع إظهار تفاصيل القاعة (رقم القاعة، المبنى، الدور) ----------
 function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
   const type = col(item, 'type');
   const doc = col(item, 'doctor');
@@ -183,16 +185,25 @@ function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
 
   const subject = col(item, 'subject') || 'مادة';
   const hall = col(item, 'hall');
+  const building = col(item, 'building');
+  const floor = col(item, 'floor');
+  
   const person = isSection ? (ast || doc) : (doc || ast);
   const label = isSection ? 'سكشن' : 'محاضرة';
   const yl = col(item, 'year');
   const dept = col(item, 'dept');
   const grp = col(item, 'group');
 
+  // بناء تفاصيل القاعة والمكان بشكل منسق
+  let hallDetails = hall ? `قاعة: ${hall}` : '';
+  if (building) hallDetails += ` (${building}`;
+  if (floor) hallDetails += building ? `, ${floor})` : `(${floor})`;
+  else if (building) hallDetails += `)`;
+
   return `
     <div class="tt-card ${isSection ? 'sec' : ''}">
       <div class="tt-subj">${esc(subject)}</div>
-      <div class="tt-meta">${label}${hall ? ' · ' + esc(hall) : ''}</div>
+      <div class="tt-meta">${label}${hallDetails ? ' · ' + esc(hallDetails) : ''}</div>
       ${person ? `<div class="tt-meta">${esc(person)}</div>` : ''}
       ${showYear && yl ? `<div class="tt-meta">${esc(yl)}${grp ? ' - مجموعة ' + esc(grp) : (dept ? ' - ' + esc(dept) : '')}</div>` : ''}
       ${doctorExtra ? doctorExtra(item, subject) : ''}
@@ -201,60 +212,17 @@ function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
 
 function renderGrid(tbody, items, opts = {}) {
   const slots = [9, 10, 11, 12, 13, 14];
-  let html = '';
-
+  let simpleHtml = '';
   slots.forEach((h, slotIdx) => {
-    html += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
+    simpleHtml += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
     DAYS.forEach((day, dayIdx) => {
-      // مطابقة المواد حسب اليوم والساعة الحقيقية إذا وجِدت في الصف، أو توزيعها بانتظام لتظهر كاملة
-      const cellItems = items.filter(it => {
-        const itemDay = normAr(col(it, 'day'));
-        const itemHour = parseHour(col(it, 'start'));
-        if (itemDay && itemHour !== null) {
-          return itemDay === normAr(day) && itemHour === h;
-        }
-        return false;
-      });
-
-      if (cellItems.length > 0) {
-        html += `<td>${cellItems.map(it => cardHtml(it, opts)).join('')}</td>`;
-      } else {
-        // إذا لم توجد أعمدة أيام صريحة، اعرض جميع المواد المتاحة بانتظام لضمان ظهور كامل الداتا
-        const fallbackItem = items[slotIdx * DAYS.length + dayIdx];
-        if (fallbackItem && slotIdx === 0 && dayIdx === 0 && !items.some(it => normAr(col(it, 'day')))) {
-          // عرض تدريجي لكل الداتا لو الشيت خالي من أعمدة الأيام
-          let allCardsHTML = '';
-          items.forEach((it) => {
-            allCardsHTML += cardHtml(it, opts);
-          });
-          html += `<td>${allCardsHTML}</td>`;
-        } else if (fallbackItem && !items.some(it => normAr(col(it, 'day')))) {
-          html += `<td></td>`;
-        } else {
-          html += `<td></td>`;
-        }
-      }
+      const idx = slotIdx * DAYS.length + dayIdx;
+      const it = items[idx];
+      simpleHtml += `<td>${it ? cardHtml(it, opts) : ''}</td>`;
     });
-    html += '</tr>';
+    simpleHtml += '</tr>';
   });
-
-  // لو الشيت لا يحتوي على أعمدة يوم محددة نهائياً، اعرض الداتا مباشرة بالترتيب في الجدول
-  if (!items.some(it => normAr(col(it, 'day')))) {
-    let simpleHtml = '';
-    slots.forEach((h, slotIdx) => {
-      simpleHtml += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
-      DAYS.forEach((day, dayIdx) => {
-        const idx = slotIdx * DAYS.length + dayIdx;
-        const it = items[idx];
-        simpleHtml += `<td>${it ? cardHtml(it, opts) : ''}</td>`;
-      });
-      simpleHtml += '</tr>';
-    });
-    tbody.innerHTML = simpleHtml;
-    return;
-  }
-
-  tbody.innerHTML = html;
+  tbody.innerHTML = simpleHtml;
 }
 
 const TABLE_HEAD = `
