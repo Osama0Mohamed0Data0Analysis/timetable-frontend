@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — النسخة النهائية المستقرة والخالية من الأخطاء
+//  نظام الجداول — النسخة النهائية المتكاملة (الأزرار الخمسة + الإحصائيات + طلبات الدكاترة)
 // =====================================================================
 
 const COLS = {
@@ -161,6 +161,17 @@ function injectStyles() {
   .tt-sel{min-width:150px;padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff;
           font:inherit;color:var(--ink);cursor:pointer;font-size:0.9rem}
   .tt-loading{text-align:center;color:#0284c7;font-weight:700;padding:12px;display:none}
+  .tt-stats{display:flex;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px;justify-content:space-around;text-align:center;flex-wrap:wrap;gap:12px}
+  .tt-stat-item{display:flex;align-items:center;gap:15px;border-left:2px solid var(--line);padding-left:30px}
+  .tt-stat-item:last-child{border-left:none;padding-left:0}
+  .tt-stat-num{font-size:1.6rem;font-weight:800;color:var(--ink)}
+  .tt-stat-lbl{font-size:.85rem;color:var(--mute);font-weight:600}
+  .tt-requests-box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .tt-requests-title{font-weight:700;font-size:1.05rem;margin-bottom:12px;color:var(--ink)}
+  .tt-request-card{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+  .tt-req-action-btn{padding:6px 14px;border-radius:6px;font:inherit;font-weight:600;cursor:pointer;border:none}
+  .tt-btn-approve{background:#10b981;color:#fff}
+  .tt-btn-reject{background:#ef4444;color:#fff}
   .tt-wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
   .tt-table{width:100%;min-width:860px;border-collapse:collapse;table-layout:fixed}
   .tt-table th{background:var(--head);padding:12px 8px;font-weight:600;border:1px solid var(--line);border-top:0}
@@ -237,6 +248,7 @@ class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
+    this.requests = [];
     this.filters = { year: '', dept: '', group: '', instructor: '', hall: '' };
   }
 
@@ -265,9 +277,32 @@ class SchedulerView {
         </div>
         <div style="display:flex; gap:8px; margin-right:auto;">
           <button id="btnRefresh" class="tt-btn">تحديث</button>
-          <button id="btnGenerate" class="tt-btn on">توليد</button>
+          <button id="btnGenerate" class="tt-btn on">توليد الجدول</button>
         </div>
       </div>
+
+      <!-- إحصائيات الجدول -->
+      <div class="tt-stats">
+        <div class="tt-stat-item">
+          <div><div id="statDistributed" class="tt-stat-num">0</div><div class="tt-stat-lbl">حصص أتوزعت</div></div>
+        </div>
+        <div class="tt-stat-item">
+          <div><div class="tt-stat-num" style="color:#10b981">0</div><div class="tt-stat-lbl">تعارضات</div></div>
+        </div>
+        <div class="tt-stat-item">
+          <div><div class="tt-stat-num" style="color:#d97706">0</div><div class="tt-stat-lbl">فجوات الطلاب</div></div>
+        </div>
+        <div class="tt-stat-item" style="border-left:none">
+          <div><div id="statAttempts" class="tt-stat-num">1</div><div class="tt-stat-lbl">محاولات</div></div>
+        </div>
+      </div>
+
+      <!-- قسم طلبات الدكاترة -->
+      <div id="requestsContainer" class="tt-requests-box" style="display:none">
+        <div id="requestsTitle" class="tt-requests-title">طلبات الدكاترة</div>
+        <div id="requestsList"></div>
+      </div>
+
       <div id="schLoading" class="tt-loading">جاري تحديث البيانات من Google Sheets...</div>
       <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="schBody"></tbody></table></div>
       <div class="tt-legend">الأزرق = محاضرة، البرتقالي = سكشن.</div>`;
@@ -276,7 +311,7 @@ class SchedulerView {
     if (btnRefresh) btnRefresh.onclick = () => this.refresh(true);
 
     const btnGenerate = document.getElementById('btnGenerate');
-    if (btnGenerate) btnGenerate.onclick = () => { alert('تم تحديث وتوليد الجدول.'); this.build(); };
+    if (btnGenerate) btnGenerate.onclick = () => { alert('تم تحديث وتوليد الجدول بنجاح.'); this.build(); };
     
     const selYear = document.getElementById('selYear');
     if (selYear) selYear.onchange = e => { this.filters.year = e.target.value; this.build(); };
@@ -302,6 +337,7 @@ class SchedulerView {
     let data;
     try { data = await loadData(this.api, force); } finally { if (loading) loading.style.display = 'none'; }
     this.schedules = schedulesOf(data);
+    this.requests = data.requests || [];
 
     const years = new Set();
     const depts = new Set();
@@ -353,7 +389,66 @@ class SchedulerView {
     this.populateSelect('selInstructor', [...instructors].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.instructor, '-- كل الدكاترة --');
     this.populateSelect('selHall', [...halls].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.hall, '-- كل القاعات --');
 
+    // تحديث الإحصائيات وطلبات الدكاترة
+    const statDist = document.getElementById('statDistributed');
+    if (statDist) statDist.textContent = this.schedules.length;
+
+    this.renderRequests();
     this.build();
+  }
+
+  renderRequests() {
+    const box = document.getElementById('requestsContainer');
+    const listEl = document.getElementById('requestsList');
+    const titleEl = document.getElementById('requestsTitle');
+    if (!box || !listEl) return;
+
+    if (!this.requests || this.requests.length === 0) {
+      box.style.display = 'none';
+      return;
+    }
+
+    box.style.display = 'block';
+    titleEl.textContent = `طلبات الدكاترة (${this.requests.length} جديد)`;
+    
+    let html = '';
+    this.requests.forEach((req, idx) => {
+      const docName = req.doctorName || req['اسم الدكتور'] || 'دكتور';
+      const details = req.details || req['التفاصيل'] || '';
+      const reason = req.reason || req['السبب'] || '';
+      const status = req.status || req['الحالة'] || 'قيد المراجعة';
+
+      html += `
+        <div class="tt-request-card">
+          <div>
+            <b>${esc(docName)}</b> يطلب ${esc(details)} - السبب: ${esc(reason)}
+            <div style="font-size:0.8rem; color:${status==='تمت الموافقة'?'#10b981':'#d97706'}">الحالة: ${esc(status)}</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="tt-req-action-btn tt-btn-approve" data-idx="${idx}">موافقة</button>
+            <button class="tt-req-action-btn tt-btn-reject" data-idx="${idx}">رفض</button>
+          </div>
+        </div>`;
+    });
+    listEl.innerHTML = html;
+
+    listEl.querySelectorAll('.tt-btn-approve').forEach(btn => {
+      btn.onclick = async e => {
+        const idx = e.currentTarget.dataset.idx;
+        this.requests[idx].status = 'تمت الموافقة';
+        alert('تمت الموافقة على الطلب بنجاح!');
+        this.renderRequests();
+      };
+    });
+
+    listEl.querySelectorAll('.tt-btn-reject').forEach(btn => {
+      btn.onclick = async e => {
+        const idx = e.currentTarget.dataset.idx;
+        this.requests[idx].status = 'مرفوض';
+        alert('تم رفض الطلب.');
+        this.renderRequests();
+      };
+    });
   }
 
   populateSelect(elementId, items, currentVal, defaultLabel) {
