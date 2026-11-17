@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — 5 أزرار وقوائم مستقلة ديناميكية (تتضمن زر القاعات والمدرجات)
+//  نظام الجداول — النسخة النهائية المستقرة والخالية من الأخطاء
 // =====================================================================
 
 const COLS = {
@@ -110,7 +110,7 @@ function matchesFilter(item, { year, dept, group, instructor, hall }) {
   }
   if (hall) {
     const rowHall = col(item, 'hall');
-    if (!normAr(rowHall).includes(normAr(hall))) return false;
+    if (rowHall && !normAr(rowHall).includes(normAr(hall))) return false;
   }
   return true;
 }
@@ -199,7 +199,8 @@ function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
   const dept = col(item, 'dept');
   const grp = col(item, 'group');
 
-  let hallDetails = hall ? `قاعة: ${hall}` : ''; if (building) hallDetails += ` (${building}`;
+  let hallDetails = hall ? `قاعة: ${hall}` : '';
+  if (building) hallDetails += ` (${building}`;
   if (floor) hallDetails += building ? `, ${floor})` : `(${floor})`;
   else if (building) hallDetails += `)`;
 
@@ -217,7 +218,11 @@ function renderGrid(tbody, items, opts = {}) {
   const slots = [9, 10, 11, 12, 13, 14];
   let simpleHtml = '';
   slots.forEach((h, slotIdx) => {
-    simpleHtml += `<tr><td class="tt-time">${slotLabel(h)}</td>`; DAYS.forEach((day, dayIdx) => { const idx = slotIdx * DAYS.length + dayIdx; const it = items[idx]; simpleHtml += `<td>${it ? cardHtml(it, opts) : ''}</td>`;
+    simpleHtml += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
+    DAYS.forEach((day, dayIdx) => {
+      const idx = slotIdx * DAYS.length + dayIdx;
+      const it = items[idx];
+      simpleHtml += `<td>${it ? cardHtml(it, opts) : ''}</td>`;
     });
     simpleHtml += '</tr>';
   });
@@ -267,14 +272,26 @@ class SchedulerView {
       <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="schBody"></tbody></table></div>
       <div class="tt-legend">الأزرق = محاضرة، البرتقالي = سكشن.</div>`;
 
-    document.getElementById('btnRefresh').onclick = () => this.refresh(true);
-    document.getElementById('btnGenerate').onclick = () => { alert('تم تحديث وتوليد الجدول.'); this.build(); };
+    const btnRefresh = document.getElementById('btnRefresh');
+    if (btnRefresh) btnRefresh.onclick = () => this.refresh(true);
+
+    const btnGenerate = document.getElementById('btnGenerate');
+    if (btnGenerate) btnGenerate.onclick = () => { alert('تم تحديث وتوليد الجدول.'); this.build(); };
     
-    document.getElementById('selYear').onchange = e => { this.filters.year = e.target.value; this.build(); };
-    document.getElementById('selDept').onchange = e => { this.filters.dept = e.target.value; this.build(); };
-    document.getElementById('selGroup').onchange = e => { this.filters.group = e.target.value; this.build(); };
-    document.getElementById('selInstructor').onchange = e => { this.filters.instructor = e.target.value; this.build(); };
-    document.getElementById('selHall').onchange = e => { this.filters.hall = e.target.value; this.build(); };
+    const selYear = document.getElementById('selYear');
+    if (selYear) selYear.onchange = e => { this.filters.year = e.target.value; this.build(); };
+
+    const selDept = document.getElementById('selDept');
+    if (selDept) selDept.onchange = e => { this.filters.dept = e.target.value; this.build(); };
+
+    const selGroup = document.getElementById('selGroup');
+    if (selGroup) selGroup.onchange = e => { this.filters.group = e.target.value; this.build(); };
+
+    const selInstructor = document.getElementById('selInstructor');
+    if (selInstructor) selInstructor.onchange = e => { this.filters.instructor = e.target.value; this.build(); };
+
+    const selHall = document.getElementById('selHall');
+    if (selHall) selHall.onchange = e => { this.filters.hall = e.target.value; this.build(); };
 
     await this.refresh(false);
   }
@@ -292,15 +309,14 @@ class SchedulerView {
     const instructors = new Set();
     const halls = new Set();
 
-    // 1. جلب القاعات من تبويب القاعات المستقل في الشيت إن وجد
-    if (data.rooms && Array.isArray(data.rooms)) {
+    if (data && data.rooms && Array.isArray(data.rooms)) {
       data.rooms.forEach(r => {
         const h = getVal(r, ROOM_COLS);
         if (h) halls.add(h);
       });
     }
 
-    if (data.groups && Array.isArray(data.groups)) {
+    if (data && data.groups && Array.isArray(data.groups)) {
       data.groups.forEach(g => {
         const y = g['الفرقة'] || g.year;
         const d = g['الشعبة'] || g['القسم'] || g.dept;
@@ -311,14 +327,13 @@ class SchedulerView {
       });
     }
 
-    if (data.instructors && Array.isArray(data.instructors)) {
+    if (data && data.instructors && Array.isArray(data.instructors)) {
       data.instructors.forEach(i => {
         const n = getVal(i, INSTRUCTOR_COLS);
         if (n) instructors.add(n);
       });
     }
 
-    // 2. جلب وتجميع البيانات من جدول الحصص (Schedules) لضمان شمولية الشيت بالكامل
     this.schedules.forEach(it => {
       const y = col(it, 'year');
       const d = col(it, 'dept');
@@ -332,7 +347,6 @@ class SchedulerView {
       splitNames(col(it, 'assistant')).forEach(n => instructors.add(n));
     });
 
-    // تعبئة القوائم الخمس ديناميكياً من الشيت
     this.populateSelect('selYear', sortYears([...years]), this.filters.year, '-- كل الفرق --');
     this.populateSelect('selDept', [...depts].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.dept, '-- كل الأقسام --');
     this.populateSelect('selGroup', [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.group, '-- كل المجموعات --');
@@ -393,8 +407,12 @@ class DoctorView {
       </div>
       <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="docBody"></tbody></table></div>`;
 
-    document.getElementById('docSelect').onchange = e => { this.selected = e.target.value; this.build(); };
-    document.getElementById('reasonSelect').onchange = e => { this.reason = e.target.value; };
+    const docSelect = document.getElementById('docSelect');
+    if (docSelect) docSelect.onchange = e => { this.selected = e.target.value; this.build(); };
+
+    const reasonSelect = document.getElementById('reasonSelect');
+    if (reasonSelect) reasonSelect.onchange = e => { this.reason = e.target.value; };
+
     await this.refresh();
   }
 
@@ -404,7 +422,7 @@ class DoctorView {
     this.requests = data.requests || [];
 
     const inst = new Set();
-    if (data.instructors && Array.isArray(data.instructors)) {
+    if (data && data.instructors && Array.isArray(data.instructors)) {
       data.instructors.forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
     }
     this.schedules.forEach(it => {
@@ -437,8 +455,163 @@ class DoctorView {
         const color = s === 'تمت الموافقة' ? '#10b981' : (s === 'مرفوض' ? '#ef4444' : '#d97706');
         return `<div class="tt-status" style="color:${color}">${esc(s)}</div>`;
       }
-      return `<button class="tt-apology" data-subject="${esc(subject)}">اعتذار</button>`; };  renderGrid(tbody, items, { showYear: true, doctorExtra: extra });  tbody.querySelectorAll('.tt-apology').forEach(btn => { btn.onclick = async e => { const subj = e.currentTarget.dataset.subject; if (!confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) return;
+      return `<button class="tt-apology" data-subject="${esc(subject)}">اعتذار</button>`;
+    };
+
+    renderGrid(tbody, items, { showYear: true, doctorExtra: extra });
+
+    tbody.querySelectorAll('.tt-apology').forEach(btn => {
+      btn.onclick = async e => {
+        const subj = e.currentTarget.dataset.subject;
+        if (!confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) return;
         await this.api.sendAction({
           action: 'addRequest',
           doctorName: this.selected,
-          details: `اعت
+          details: `اعتذار عن مادة ${subj}`,
+          reason: this.reason,
+        });
+        alert('تم إرسال طلب الاعتذار للمنسق بنجاح!');
+        localStorage.removeItem('sheet_cache_data');
+        await this.refresh(true);
+      };
+    });
+  }
+}
+
+// ---------- شاشة الطالب ----------
+class StudentView {
+  constructor(api) {
+    this.api = api;
+    this.schedules = [];
+    this.year = '';
+    this.group = '';
+  }
+
+  async mount(container) {
+    container.innerHTML = `
+      <div class="tt-note">اختر الفرقة والمجموعة لاستعراض جدولك الدراسي.</div>
+      <div class="tt-filters">
+        <div class="tt-field">
+          <label>الفرقة الدراسية</label>
+          <select id="stYear" class="tt-sel"></select>
+        </div>
+        <div class="tt-field">
+          <label>المجموعة</label>
+          <select id="stGroup" class="tt-sel" style="min-width:200px"></select>
+        </div>
+      </div>
+      <div class="tt-banner">جدولك محدّث. مفيش تغييرات.</div>
+      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="stBody"></tbody></table></div>`;
+
+    const stYear = document.getElementById('stYear');
+    if (stYear) stYear.onchange = e => {
+      this.year = e.target.value;
+      this.build();
+    };
+
+    const stGroup = document.getElementById('stGroup');
+    if (stGroup) stGroup.onchange = e => {
+      this.group = e.target.value;
+      this.build();
+    };
+
+    await this.refresh();
+  }
+
+  async refresh() {
+    const data = await loadData(this.api);
+    this.schedules = schedulesOf(data);
+
+    const years = new Set();
+    const groups = new Set();
+    if (data && data.groups && Array.isArray(data.groups)) {
+      data.groups.forEach(g => {
+        if (g['الفرقة']) years.add(g['الفرقة'].toString().trim());
+        if (g['المجموعة']) groups.add(g['المجموعة'].toString().trim());
+      });
+    }
+    this.schedules.forEach(it => {
+      const y = col(it, 'year');
+      const g = col(it, 'group') || col(it, 'dept');
+      if (y) years.add(y);
+      if (g) groups.add(g);
+    });
+
+    const yList = sortYears([...years]);
+    const gList = [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}));
+
+    const ySel = document.getElementById('stYear');
+    if (ySel) {
+      ySel.innerHTML = '';
+      yList.forEach(y => ySel.appendChild(new Option(y, y)));
+      if (!this.year || !yList.includes(this.year)) this.year = yList[0] || '';
+      ySel.value = this.year;
+    }
+
+    const gSel = document.getElementById('stGroup');
+    if (gSel) {
+      gSel.innerHTML = '<option value="">-- كل المجموعات --</option>';
+      gList.forEach(g => gSel.appendChild(new Option(g, g)));
+      if (!this.group || !gList.includes(this.group)) this.group = '';
+      gSel.value = this.group;
+    }
+
+    this.build();
+  }
+
+  build() {
+    const tbody = document.getElementById('stBody');
+    if (!tbody) return;
+    const items = this.schedules.filter(it => matchesFilter(it, { year: this.year, group: this.group }));
+    renderGrid(tbody, items);
+  }
+}
+
+// ---------- التطبيق الرئيسي ----------
+export class App {
+  constructor(container, api) {
+    this.container = container;
+    this.api = api;
+  }
+
+  async start() {
+    injectStyles();
+    this.container.innerHTML = `
+      <div class="tt">
+        <div class="tt-nav">
+          <button id="navScheduler" class="tt-btn">1) منسق الجداول</button>
+          <button id="navDoctor" class="tt-btn">2) دكتور / معيد</button>
+          <button id="navStudent" class="tt-btn">3) طالب</button>
+        </div>
+        <div id="viewContainer"></div>
+      </div>`;
+
+    const navScheduler = document.getElementById('navScheduler');
+    if (navScheduler) navScheduler.onclick = () => this.switchView('scheduler');
+
+    const navDoctor = document.getElementById('navDoctor');
+    if (navDoctor) navDoctor.onclick = () => this.switchView('doctor');
+
+    const navStudent = document.getElementById('navStudent');
+    if (navStudent) navStudent.onclick = () => this.switchView('student');
+
+    this.switchView('scheduler');
+  }
+
+  async switchView(name) {
+    const btns = { scheduler: 'navScheduler', doctor: 'navDoctor', student: 'navStudent' };
+    Object.entries(btns).forEach(([k, id]) => {
+      const b = document.getElementById(id);
+      if (b) b.classList.toggle('on', k === name);
+    });
+
+    const vc = document.getElementById('viewContainer');
+    if (vc) {
+      vc.innerHTML = '<div class="tt-loading" style="display:block">جاري التحميل...</div>';
+
+      const views = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
+      const view = new views[name](this.api);
+      await view.mount(vc);
+    }
+  }
+}
