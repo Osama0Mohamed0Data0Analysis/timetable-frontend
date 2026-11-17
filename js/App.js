@@ -1,10 +1,11 @@
-// --- Scheduler View بالتصميم الدقيق والفلترة الذكية الدقيقة ---
+// --- Scheduler View مع القائمة الديناميكية المطابقة للصور ---
 class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
+    this.instructorsList = [];
     this.groupsList = [];
-    this.selectedGroup = '';
+    this.selectedValue = '';
   }
 
   getVal(item, keys) {
@@ -43,10 +44,10 @@ class SchedulerView {
             <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">وُلّد الجدول</button>
           </div>
           
-          <!-- فلتر الفرق والأقسام الديناميكي -->
+          <!-- القائمة المنسدلة المقسمة ديناميكياً (المجموعات والدكاترة) -->
           <div style="display: flex; gap: 10px; align-items: center;">
-            <select id="filterGroup" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 250px; cursor: pointer; font-weight: 500; background: white; color: #0369a1;">
-              <option value="">-- كل الفرق والأقسام والمجموعات (عرض الكل) --</option>
+            <select id="filterDropdown" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 260px; cursor: pointer; font-weight: 500; background: white; color: #0369a1;">
+              <option value="">-- اختر المجموعة أو الدكتور --</option>
             </select>
           </div>
         </div>
@@ -80,8 +81,8 @@ class SchedulerView {
 
     document.getElementById('btnRefresh').addEventListener('click', () => this.refreshData());
     document.getElementById('btnGenerate').addEventListener('click', () => { alert("تم تحديث وتوليد الجدول ميكانيكياً."); this.buildGrid(); });
-    document.getElementById('filterGroup').addEventListener('change', (e) => {
-      this.selectedGroup = e.target.value;
+    document.getElementById('filterDropdown').addEventListener('change', (e) => {
+      this.selectedValue = e.target.value;
       this.buildGrid();
     });
 
@@ -94,29 +95,67 @@ class SchedulerView {
 
     const data = await this.api.getData();
     this.schedules = Array.isArray(data) ? data : (data.schedules || []);
+    const rawInstructors = data.instructors || [];
+    const groupsData = data.groups || [];
 
+    // استخراج المجموعات
     const groupSet = new Set();
+    groupsData.forEach(g => {
+      const yr = g['الفرقة'] || '';
+      const grp = g['المجموعة'] || '';
+      if (yr) groupSet.add(`${yr} - مجموعة ${grp || '1'}`);
+    });
+
     this.schedules.forEach(item => {
       const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
       if (yL) {
-        groupSet.add(yL);
-        if (dept) {
-          groupSet.add(`${yL} - ${dept}`);
-        }
+        groupSet.add(`${yL}${dept ? ' - ' + dept : ''}`);
       }
     });
 
+    // استخراج الدكاترة والمعيدين
+    const instructorSet = new Set();
+    rawInstructors.forEach(inst => {
+      const name = this.getVal(inst, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name']);
+      if (name) instructorSet.add(name);
+    });
+
+    this.schedules.forEach(item => {
+      const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
+      const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
+      if (doc) doc.split(',').forEach(d => { if (d.trim()) instructorSet.add(d.trim()); });
+      if (ast) ast.split(',').forEach(a => { if (a.trim()) instructorSet.add(a.trim()); });
+    });
+
     this.groupsList = Array.from(groupSet).filter(Boolean).sort();
-    const select = document.getElementById('filterGroup');
+    this.instructorsList = Array.from(instructorSet).filter(Boolean).sort();
+
+    const select = document.getElementById('filterDropdown');
     if (select) {
-      select.innerHTML = `<option value="">-- كل الفرق والأقسام والمجموعات (عرض الكل) --</option>`;
+      select.innerHTML = `<option value="">-- عرض الكل --</option>`;
+      
+      // مجموعة المجموعات
+      const groupOptGroup = document.createElement('optgroup');
+      groupOptGroup.label = "المجموعات";
       this.groupsList.forEach(g => {
         const opt = document.createElement('option');
-        opt.value = g;
+        opt.value = `group:${g}`;
         opt.textContent = g;
-        select.appendChild(opt);
+        groupOptGroup.appendChild(opt);
       });
+      select.appendChild(groupOptGroup);
+
+      // مجموعة الدكاترة والمعيدين
+      const instOptGroup = document.createElement('optgroup');
+      instOptGroup.label = "الدكاترة والمعيدين";
+      this.instructorsList.forEach(inst => {
+        const opt = document.createElement('option');
+        opt.value = `inst:${inst}`;
+        opt.textContent = inst;
+        instOptGroup.appendChild(opt);
+      });
+      select.appendChild(instOptGroup);
     }
 
     if (loading) loading.style.display = 'none';
@@ -128,21 +167,21 @@ class SchedulerView {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    // تصفية ذكية ودقيقة تطابق الفرقة أو القسم جزئياً وتدعم عرض الكل
     const filtered = this.schedules.filter(item => {
-      if (!this.selectedGroup) return true;
-      const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
-      const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
+      if (!this.selectedValue) return true;
       
-      const sel = this.selectedGroup.trim();
-      if (sel.includes('-')) {
-        const parts = sel.split('-').map(p => p.trim());
-        const matchYear = yL.includes(parts[0]);
-        const matchDept = dept.includes(parts[1]);
-        return matchYear && matchDept;
-      } else {
-        return yL.includes(sel) || dept.includes(sel);
+      const [type, val] = this.selectedValue.split(':');
+      if (type === 'group') {
+        const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
+        const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
+        const combined = `${yL}${dept ? ' - ' + dept : ''}`;
+        return combined.includes(val) || yL.includes(val);
+      } else if (type === 'inst') {
+        const doc = this.getVal(item, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
+        const ast = this.getVal(item, ['المعيدين / السكاشن', 'assistant']);
+        return doc.includes(val) || ast.includes(val);
       }
+      return true;
     });
 
     const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
