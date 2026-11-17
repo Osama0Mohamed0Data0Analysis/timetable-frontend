@@ -1,9 +1,8 @@
-// --- Scheduler View بالتصميم الدقيق والربط الميكانيكي ---
+// --- Scheduler View بالتصميم الدقيق والفلترة الذكية الدقيقة ---
 class SchedulerView {
   constructor(api) {
     this.api = api;
     this.schedules = [];
-    this.requests = [];
     this.groupsList = [];
     this.selectedGroup = '';
   }
@@ -44,15 +43,15 @@ class SchedulerView {
             <button id="btnGenerate" style="background: #1e293b; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;">وُلّد الجدول</button>
           </div>
           
-          <!-- فلتر الفرقة / المجموعة تماماً مثل الصورة -->
+          <!-- فلتر الفرق والأقسام الديناميكي -->
           <div style="display: flex; gap: 10px; align-items: center;">
-            <select id="filterGroup" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 220px; cursor: pointer; font-weight: 500; background: white;">
-              <option value="">-- كل الفرق والمجموعات --</option>
+            <select id="filterGroup" style="padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 250px; cursor: pointer; font-weight: 500; background: white; color: #0369a1;">
+              <option value="">-- كل الفرق والأقسام والمجموعات (عرض الكل) --</option>
             </select>
           </div>
         </div>
 
-        <!-- الجدول الأسبوعي الشبكي مطابق للصورة تماماً -->
+        <!-- الجدول الأسبوعي الشبكي -->
         <div style="background: white; padding: 20px; border-radius: 8px; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
           <div id="loading" style="color: #0284c7; font-weight: bold; text-align: center; margin-bottom: 15px;">جاري جلب البيانات من Google Sheets...</div>
           
@@ -71,7 +70,7 @@ class SchedulerView {
             <tbody id="gridTableBody"></tbody>
           </table>
 
-          <!-- توضيح الألوان أسفل الجدول تماماً مثل الصورة -->
+          <!-- توضيح الألوان أسفل الجدول -->
           <div style="margin-top: 15px; font-size: 0.85rem; color: #64748b; text-align: left;">
             الأزرق = محاضرة، البرتقالي = سكشن.
           </div>
@@ -100,23 +99,24 @@ class SchedulerView {
     this.schedules.forEach(item => {
       const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-      if (yL) groupSet.add(`${yL}${dept ? ' - ' + dept : ''}`);
+      if (yL) {
+        groupSet.add(yL);
+        if (dept) {
+          groupSet.add(`${yL} - ${dept}`);
+        }
+      }
     });
 
     this.groupsList = Array.from(groupSet).filter(Boolean).sort();
     const select = document.getElementById('filterGroup');
     if (select) {
-      select.innerHTML = `<option value="">-- كل الفرق والمجموعات --</option>`;
+      select.innerHTML = `<option value="">-- كل الفرق والأقسام والمجموعات (عرض الكل) --</option>`;
       this.groupsList.forEach(g => {
         const opt = document.createElement('option');
         opt.value = g;
         opt.textContent = g;
         select.appendChild(opt);
       });
-      if (this.groupsList.length > 0 && !this.selectedGroup) {
-        this.selectedGroup = this.groupsList[0];
-        select.value = this.selectedGroup;
-      }
     }
 
     if (loading) loading.style.display = 'none';
@@ -128,15 +128,24 @@ class SchedulerView {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    // تصفية ذكية ودقيقة تطابق الفرقة أو القسم جزئياً وتدعم عرض الكل
     const filtered = this.schedules.filter(item => {
+      if (!this.selectedGroup) return true;
       const yL = this.getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
       const dept = this.getVal(item, ['الشعبة / القسم', 'القسم', 'department']);
-      const combined = `${yL} ${dept}`;
-      return !this.selectedGroup || combined.includes(this.selectedGroup);
+      
+      const sel = this.selectedGroup.trim();
+      if (sel.includes('-')) {
+        const parts = sel.split('-').map(p => p.trim());
+        const matchYear = yL.includes(parts[0]);
+        const matchDept = dept.includes(parts[1]);
+        return matchYear && matchDept;
+      } else {
+        return yL.includes(sel) || dept.includes(sel);
+      }
     });
 
     const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00"];
-    // ترتيب الأيام من اليمين لليسار: الخميس، الأربعاء، الثلاثاء، الإثنين، الأحد، السبت
     const days = ["الخميس", "الأربعاء", "الثلاثاء", "الإثنين", "الأحد", "السبت"];
 
     timeSlots.forEach((slot, slotIndex) => {
@@ -149,7 +158,6 @@ class SchedulerView {
         const item = filtered[slotIndex * 6 + dayIndex] || null;
         if (item) {
           const isLecture = slotIndex % 2 === 0;
-          // الأزرق الفاتح للمحاضرة، والبرتقالي الفاتح للسكشن تماماً مثل الصورة
           const bgCard = isLecture ? '#e0f2fe' : '#ffedd5'; 
           const borderCard = isLecture ? '#bae6fd' : '#fed7aa';
           const typeLabel = isLecture ? 'محاضرة' : 'سكشن';
