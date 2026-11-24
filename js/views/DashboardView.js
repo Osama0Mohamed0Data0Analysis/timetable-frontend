@@ -30,7 +30,7 @@ function normAr(s) {
 }
 
 function getVal(item, keys) {
-  if (!item) return '';
+  if (!item || typeof item !== 'object') return '';
   const objKeys = Object.keys(item);
   for (let i = 0; i < keys.length; i++) {
     const pk = keys[i];
@@ -46,10 +46,10 @@ function getVal(item, keys) {
     const pk = keys[i];
     for (let j = 0; j < objKeys.length; j++) {
       const k = objKeys[j];
-      const lk = k.toLowerCase().trim();
-      const lpk = pk.toLowerCase().trim();
-      if (lk.indexOf(lpk) !== -1) {
-        if (lpk.indexOf('مادة') !== -1 && lk.indexOf('كود') !== -1) continue;
+      const lk = normAr(k.toLowerCase());
+      const lpk = normAr(pk.toLowerCase());
+      if (lpk && lk.indexOf(lpk) !== -1) {
+        if (lpk.indexOf('ماده') !== -1 && lk.indexOf('كود') !== -1) continue;
         const v = item[k];
         if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
       }
@@ -239,9 +239,10 @@ export class DashboardView {
       '.db-chip{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:8px;padding:6px 10px;font-size:.82rem;font-weight:600}',
       '.db-mini-list{display:flex;flex-direction:column;gap:8px}',
       '.db-mini-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:.83rem}',
-      '.db-note-item{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:.82rem;color:#78350f;margin-bottom:8px}',
+      '.db-sub-head{font-size:.85rem;font-weight:700;color:#1e293b;margin:10px 0 6px}',
+      '.db-note-item{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:.81rem;color:#78350f;margin-bottom:6px}',
       '.db-note-item:last-child{margin-bottom:0}',
-      '.db-empty{font-size:.85rem;color:#64748b;text-align:center;padding:12px}'
+      '.db-empty{font-size:.85rem;color:#64748b;text-align:center;padding:10px}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -403,9 +404,9 @@ export class DashboardView {
     const allRooms = pickArray(data, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
     const allFaculty = pickArray(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
     const allGroups = pickArray(data, ['groups', 'الفرق والمجموعات']);
-    const allPeriods = pickArray(data, ['periods', 'timeSlots', 'الفترات الزمنية']);
-    const allRules = pickArray(data, ['rules', 'قواعد الكلية']);
-    const allNotes = pickArray(data, ['notes', 'reviewNotes', 'ملاحظات المراجعة']);
+    const allPeriods = pickArray(data, ['periods', 'timeSlots', 'الفترات الزمنية', 'الفترات']);
+    const allRules = pickArray(data, ['rules', 'collegeRules', 'قواعد الكلية']);
+    const allNotes = pickArray(data, ['notes', 'reviewNotes', 'ملاحظات المراجعة', 'ملاحظات']);
 
     const filteredCourses = allCourses.filter(function (c) { return self.matchItem(c); });
     const filteredSchedules = schedules.filter(function (s) { return self.matchItem(s); });
@@ -449,8 +450,11 @@ export class DashboardView {
       roomsByFloor.set(flr, (roomsByFloor.get(flr) || 0) + 1);
     });
 
+    const avgCapacity = allRooms.length ? Math.round(totalCapacity / allRooms.length) : 0;
+
     let totalLecHours = 0;
     let totalSecHours = 0;
+    let rowsWithSections = 0;
     let missingSectionCount = 0;
     const coursesByYear = new Map();
     const coursesByDept = new Map();
@@ -459,9 +463,12 @@ export class DashboardView {
       const d = getVal(item, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || 'عام';
       const lh = toNum(getVal(item, LEC_HRS_COLS));
       const sh = toNum(getVal(item, SEC_HRS_COLS));
+      const assistants = getVal(item, ['المعيدين / السكاشن', 'assistant']);
       totalLecHours += lh;
       totalSecHours += sh;
-      if (sh <= 0 && !getVal(item, ['المعيدين / السكاشن', 'assistant'])) {
+      if (sh > 0 || assistants) {
+        rowsWithSections += 1;
+      } else {
         missingSectionCount += 1;
       }
       coursesByYear.set(y, (coursesByYear.get(y) || 0) + 1);
@@ -541,19 +548,42 @@ export class DashboardView {
         '</div></div>';
     }
 
-    const rulesHtml = allRules.length
-      ? '<div class="db-mini-list">' + allRules.slice(0, 6).map(function (item) {
-          const k = getVal(item, ['البند', 'item']) || 'بند';
-          const v = getVal(item, ['القيمة', 'value']) || '-';
-          return '<div class="db-mini-row"><span><b>' + esc(k) + '</b></span><span>' + esc(v) + '</span></div>';
+    const validRules = allRules.filter(function (item) {
+      const k = getVal(item, ['البند', 'item', 'rule', 'name', 'title']);
+      const v = getVal(item, ['القيمة', 'value', 'val', 'desc']);
+      return Boolean(k || v);
+    });
+
+    const rulesHtml = validRules.length
+      ? '<div class="db-mini-list">' + validRules.slice(0, 6).map(function (item) {
+          const k = getVal(item, ['البند', 'item', 'rule', 'name', 'title']) || 'بند';
+          const v = getVal(item, ['القيمة', 'value', 'val', 'desc']) || '-';
+          const src = getVal(item, ['المصدر / ملاحظات', 'المصدر', 'source', 'notes']);
+          return (
+            '<div class="db-mini-row">' +
+            '<span><b>' + esc(k) + '</b>' + (src ? ' <small style="color:#64748b">(' + esc(src) + ')</small>' : '') + '</span>' +
+            '<span>' + esc(v) + '</span>' +
+            '</div>'
+          );
         }).join('') + '</div>'
       : '<div class="db-empty">لا توجد قواعد مسجلة في الشيت.</div>';
 
-    const notesHtml = allNotes.length
-      ? allNotes.slice(0, 5).map(function (n) {
-          const topic = getVal(n, ['الموضوع', 'topic']) || 'ملاحظة';
-          const det = getVal(n, ['التفاصيل', 'details']) || '';
-          return '<div class="db-note-item"><b>' + esc(topic) + ':</b> ' + esc(det) + '</div>';
+    const validNotes = allNotes.filter(function (n) {
+      const topic = getVal(n, ['الموضوع', 'topic', 'title', 'subject', 'البند']);
+      const det = getVal(n, ['التفاصيل', 'details', 'detail', 'note', 'ملاحظات', 'القيمة']);
+      return Boolean(topic || det);
+    });
+
+    const notesHtml = validNotes.length
+      ? validNotes.slice(0, 6).map(function (n) {
+          const topic = getVal(n, ['الموضوع', 'topic', 'title', 'subject', 'البند']) || 'ملاحظة';
+          const det = getVal(n, ['التفاصيل', 'details', 'detail', 'note', 'ملاحظات', 'القيمة']) || '';
+          const src = getVal(n, ['المصدر', 'source']);
+          return (
+            '<div class="db-note-item">' +
+            '<b>' + esc(topic) + (src ? ' [' + esc(src) + ']' : '') + ':</b> ' + esc(det) +
+            '</div>'
+          );
         }).join('')
       : '<div class="db-empty">لا توجد ملاحظات مراجعة مسجلة.</div>';
 
@@ -573,7 +603,7 @@ export class DashboardView {
       '<div class="db-kpi g3 db-click-item" data-group="rooms" data-label="القاعات والمدرجات والمعامل">' +
       '<div class="db-kpi-lbl">القاعات والمدرجات والمعامل</div>' +
       '<div class="db-kpi-val">' + allRooms.length + '</div>' +
-      '<div class="db-kpi-sub">' + buildingEntries.length + ' مبنى · ' + floorEntries.length + ' أدوار</div>' +
+      '<div class="db-kpi-sub">' + buildingEntries.length + ' مبنى · ' + floorEntries.length + ' أدوار (متوسط ' + avgCapacity + ' طالب)</div>' +
       '</div>' +
       '<div class="db-kpi g4 db-click-item" data-group="capacity" data-label="السعة الإجمالية للقاعات">' +
       '<div class="db-kpi-lbl">السعة الإجمالية للقاعات</div>' +
@@ -596,10 +626,18 @@ export class DashboardView {
       '<div class="db-mini-list">' +
       '<div class="db-mini-row"><span>إجمالي ساعات المحاضرات أسبوعياً</span><b>' + totalLecHours + ' ساعة</b></div>' +
       '<div class="db-mini-row"><span>إجمالي ساعات السكاشن أسبوعياً</span><b>' + totalSecHours + ' ساعة</b></div>' +
+      '<div class="db-mini-row"><span>صفوف مواد بسكشن/معيد مسجل</span><b>' + rowsWithSections + '</b></div>' +
       '<div class="db-mini-row"><span>صفوف مواد بدون سكشن/معيد مسجل</span><b>' + missingSectionCount + '</b></div>' +
       '</div></div>' +
-      '<div class="db-card"><h3 class="db-card-title">توزيع القاعات حسب المبنى</h3>' + hBarChartHtml(buildingEntries, 'building') + '</div>' +
-      '<div class="db-card"><h3 class="db-card-title">قواعد الكلية وملاحظات المراجعة</h3>' + rulesHtml + '<div style="margin-top:10px">' + notesHtml + '</div></div>' +
+      '<div class="db-card"><h3 class="db-card-title">توزيع القاعات حسب المبنى والدور</h3>' +
+      hBarChartHtml(buildingEntries, 'building') +
+      '<div class="db-sub-head">توزيع القاعات حسب الدور</div>' +
+      hBarChartHtml(floorEntries, 'floor') +
+      '</div>' +
+      '<div class="db-card"><h3 class="db-card-title">قواعد الكلية وملاحظات المراجعة</h3>' +
+      '<div class="db-sub-head">قواعد الكلية</div>' + rulesHtml +
+      '<div class="db-sub-head">ملاحظات المراجعة</div>' + notesHtml +
+      '</div>' +
       '</div>';
 
     const closeBtn = document.getElementById('dbCloseInsp');
