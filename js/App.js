@@ -1,4 +1,5 @@
 import { DashboardView } from './views/DashboardView.js';
+import { SheetChatBot } from './components/SheetChatBot.js';
 
 const COLS = {
   day:       ['اليوم', 'day'],
