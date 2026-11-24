@@ -3,6 +3,13 @@ import { SchedulerView } from './views/SchedulerView.js';
 import { DoctorView } from './views/DoctorView.js';
 import { StudentView } from './views/StudentView.js';
 
+const VIEWS = {
+  dashboard: DashboardView,
+  scheduler: SchedulerView,
+  doctor: DoctorView,
+  student: StudentView,
+};
+
 export class App {
   constructor(container, api) {
     this.container = container;
@@ -51,8 +58,7 @@ export class App {
   }
 
   async switchView(viewName, extraState = null) {
-    const validViews = ['dashboard', 'scheduler', 'doctor', 'student'];
-    const targetName = validViews.includes(viewName) ? viewName : 'dashboard';
+    const targetName = VIEWS[viewName] ? viewName : 'dashboard';
     this.currentView = targetName;
     this.updateNavActiveState(targetName);
 
@@ -62,19 +68,10 @@ export class App {
     viewContainer.innerHTML = `<div style="text-align:center;padding:32px;color:#0284c7;font-weight:700;">جاري التحميل...</div>`;
 
     try {
-      if (targetName === 'dashboard') {
-        const view = new DashboardView(this.api, (nextView, state) => this.switchView(nextView, state));
-        await view.mount(viewContainer);
-        return;
-      }
-
-      const viewsMap = {
-        scheduler: SchedulerView,
-        doctor: DoctorView,
-        student: StudentView,
-      };
-      const ViewClass = viewsMap[targetName];
-      const view = extraState ? new ViewClass(this.api, extraState) : new ViewClass(this.api);
+      const ViewClass = VIEWS[targetName];
+      const view = targetName === 'dashboard'
+        ? new ViewClass(this.api, (nextView, state) => this.switchView(nextView, state))
+        : (extraState ? new ViewClass(this.api, extraState) : new ViewClass(this.api));
       await view.mount(viewContainer);
     } catch (err) {
       console.error('Error switching view:', err);
