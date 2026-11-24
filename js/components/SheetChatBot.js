@@ -75,7 +75,7 @@ function getVal(row, keys) {
   return '';
 }
 
-function normalizeToken(w) {
+function flexToken(w) {
   let s = normAr(w).replace(/[^\p{L}\p{N}_-]+/gu, '');
   if (s.length > 3 && s.startsWith('ال')) s = s.slice(2);
   if (s.endsWith('ات') && s.length > 4) s = s.slice(0, -2);
@@ -92,7 +92,7 @@ export class SheetChatBot {
     this.messages = [
       {
         role: 'bot',
-        text: 'اسألني عن الأقسام والشعب، المواد، الدكاترة والمعيدين، القاعات والسعات، الفترات، قواعد الكلية، أو ملاحظات المراجعة.',
+        text: 'اسألني عن أعضاء هيئة التدريس، الأقسام والشعب، المواد، القاعات والسعات، الفترات، قواعد الكلية، أو ملاحظات المراجعة.',
       },
     ];
   }
@@ -165,7 +165,6 @@ export class SheetChatBot {
     }
 
     const q = normAr(cleanQ);
-    const qStem = normalizeToken(cleanQ);
     const isCount = /كم|عدد|اجمالي|إجمالي|مجموع/i.test(q);
 
     const courses = pickArray(data, ['courses', 'subjects', 'materials', 'المواد', 'المواد الدراسية']);
@@ -177,49 +176,74 @@ export class SheetChatBot {
     const notes = pickArray(data, ['notes', 'reviewNotes', 'ملاحظات المراجعة', 'ملاحظات']);
     const schedules = Array.isArray(data) ? data : pickArray(data, ['schedules', 'schedule', 'الجداول']);
 
-    // 1) استفسارات الأقسام والشعب والبرامج
-    if (/قسم|اقسام|شعب|شعبه|برنامج|برامج/i.test(q) || qStem === 'قسم' || qStem === 'شعب' || qStem === 'برنامج') {
-      const deptSet = new Set();
-      courses.forEach(r => {
-        const d = getVal(r, ['الشعبة / القسم', 'القسم', 'department']);
-        if (d) deptSet.add(d);
-      });
-      groups.forEach(r => {
-        const d = getVal(r, ['البرنامج / الشعبة', 'الشعبة', 'القسم', 'department']);
-        if (d) deptSet.add(d);
-      });
-      faculty.forEach(r => {
-        const d = getVal(r, ['القسم *', 'القسم', 'department']);
-        if (d) deptSet.add(d);
-      });
+    // 1) أعضاء هيئة التدريس / الدكاترة / المعيدين
+    if (/هيئه|تدريس|دكتور|دكاتر|معيد|معيدي|اعضاء/i.test(q)) {
+      if (!faculty.length) return 'لا توجد بيانات لأعضاء هيئة التدريس في الشيت الحالي.';
+      const roleWords = new Set(['اعضاء', 'هيئه', 'تدريس', 'دكتور', 'دكاتره', 'معيد', 'معيدين', 'كم', 'عدد', 'مين', 'من', 'اسماء', 'قائمه', 'قائمة']);
+      const extraTokens = q.split(/[\s،,؟?!:؛()\[\]"'\/\\-]+/)
+        .map(flexToken)
+        .filter(t => t && t.length >= 2 && !roleWords.has(t));
 
-      const list = [...deptSet].sort((a, b) => a.localeCompare(b, 'ar'));
-      if (!list.length) return 'لا توجد أقسام أو شعب مسجلة في البيانات الحالية.';
+      const filtered = extraTokens.length
+        ? faculty.filter(f => {
+            const txt = normAr(Object.values(f).join(' '));
+            return extraTokens.some(t => txt.includes(t));
+          })
+        : faculty;
 
-      const prefix = isCount ? `• عدد الأقسام والشعب: ${list.length}\n` : '';
-      return prefix + list.map(d => {
-        const cCount = courses.filter(c => getVal(c, ['الشعبة / القسم', 'القسم', 'department']) === d).length;
-        const fCount = faculty.filter(f => getVal(f, ['القسم *', 'القسم', 'department']) === d).length;
-        const extra = [];
-        if (cCount) extra.push(`${cCount} مادة`);
-        if (fCount) extra.push(`${fCount} عضو هيئة تدريس`);
-        return `• ${d}${extra.length ? ` (${extra.join('، ')})` : ''}`;
-      }).join('\n');
+      const list = filtered.length ? filtered : faculty;
+      const head = isCount || !extraTokens.length ? [`• العدد: ${list.length}`] : [];
+      return head.concat(list.slice(0, 12).map(f => {
+        const name = getVal(f, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name']) || 'عضو';
+        const role = getVal(f, ['الدرجة الوظيفية *', 'الدرجة الوظيفية', 'role']);
+        const dept = getVal(f, ['القسم *', 'القسم', 'department']);
+        const note = getVal(f, ['ملاحظات', 'notes']);
+        return `• ${name}${role ? ` — ${role}` : ''}${dept ? `، ${dept}` : ''}${note ? ` (${note})` : ''}`;
+      })).join('\n');
     }
 
-    // 2) استفسارات القاعات والمدرجات والمعامل والسعات
+    // 2) الأقسام / الشعب / البرامج (بدون تكرار)
+    if (/قسم|اقسام|شعب|شعبه|برنامج|برامج/i.test(q)) {
+      const uniqueMap = new Map();
+      const addDept = raw => {
+        const clean = String(raw || '').trim();
+        if (!clean || clean === 'NaN') return;
+        const key = normAr(clean);
+        if (!uniqueMap.has(key)) uniqueMap.set(key, clean);
+      };
+
+      courses.forEach(r => addDept(getVal(r, ['الشعبة / القسم', 'القسم', 'department'])));
+      groups.forEach(r => addDept(getVal(r, ['البرنامج / الشعبة', 'الشعبة', 'القسم', 'department'])));
+      faculty.forEach(r => addDept(getVal(r, ['القسم *', 'القسم', 'department'])));
+
+      const list = [...uniqueMap.values()].sort((a, b) => a.localeCompare(b, 'ar'));
+      if (!list.length) return 'لا توجد أقسام أو شعب مسجلة.';
+
+      const head = isCount ? [`• العدد: ${list.length}`] : [];
+      return head.concat(list.map(d => {
+        const nDept = normAr(d);
+        const cCount = courses.filter(c => normAr(getVal(c, ['الشعبة / القسم', 'القسم', 'department'])) === nDept).length;
+        const fCount = faculty.filter(f => normAr(getVal(f, ['القسم *', 'القسم', 'department'])) === nDept).length;
+        const info = [];
+        if (cCount) info.push(`${cCount} مادة`);
+        if (fCount) info.push(`${fCount} عضو هيئة تدريس`);
+        return `• ${d}${info.length ? ` (${info.join('، ')})` : ''}`;
+      })).join('\n');
+    }
+
+    // 3) القاعات / المدرجات / المعامل / السعات
     if (/قاع|مدرج|معمل|مبن|دور|سع/i.test(q)) {
-      const matchedRooms = rooms.filter(r => {
+      if (!rooms.length) return 'لا توجد قاعات مسجلة.';
+      const capTotal = rooms.reduce((s, r) => s + toNum(getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity'])), 0);
+      const filtered = rooms.filter(r => {
         const txt = normAr(Object.values(r).join(' '));
-        return txt.includes(q) || (qStem && txt.includes(qStem)) || /قاع|مدرج|معمل/i.test(q);
+        return txt.includes(q) || /قاع|مدرج|معمل|سع/i.test(q);
       });
-      const target = matchedRooms.length ? matchedRooms : rooms;
-      if (!target.length) return 'لا توجد قاعات مسجلة في البيانات الحالية.';
-      const capTotal = target.reduce((s, r) => s + toNum(getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity'])), 0);
+      const target = filtered.length ? filtered : rooms;
       const head = isCount || /سع|اجمالي|إجمالي/i.test(q)
-        ? [`• عدد القاعات: ${target.length} | إجمالي السعة: ${capTotal.toLocaleString('en-US')} طالب`]
+        ? [`• العدد: ${target.length} | إجمالي السعة: ${capTotal.toLocaleString('en-US')} طالب`]
         : [];
-      return head.concat(target.slice(0, 8).map(r => {
+      return head.concat(target.slice(0, 10).map(r => {
         const num = getVal(r, ['رقم القاعة', 'اسم القاعة', 'hall', 'room']) || '-';
         const typ = getVal(r, ['* النوع', 'النوع', 'type']) || 'قاعة';
         const cap = getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity']);
@@ -229,32 +253,30 @@ export class SheetChatBot {
       })).join('\n');
     }
 
-    // 3) استفسارات قواعد الكلية
+    // 4) قواعد الكلية
     if (/قاعد|قواعد|عام اكاديمي|فصل دراسي/i.test(q)) {
-      if (!rules.length) return 'لا توجد قواعد مسجلة في البيانات الحالية.';
-      return rules.slice(0, 10).map(r => {
+      if (!rules.length) return 'لا توجد قواعد مسجلة.';
+      return rules.slice(0, 12).map(r => {
         const b = getVal(r, ['البند', 'item', 'title']) || 'بند';
         const v = getVal(r, ['القيمة', 'value', 'desc']) || '-';
         return `• ${b}: ${v}`;
       }).join('\n');
     }
 
-    // 4) استفسارات ملاحظات المراجعة
+    // 5) ملاحظات المراجعة
     if (/ملاحظ|مراجع|تنبيه/i.test(q)) {
-      if (!notes.length) return 'لا توجد ملاحظات مراجعة مسجلة في البيانات الحالية.';
-      return notes.slice(0, 10).map(n => {
+      if (!notes.length) return 'لا توجد ملاحظات مراجعة مسجلة.';
+      return notes.slice(0, 12).map(n => {
         const t = getVal(n, ['الموضوع', 'topic', 'title']) || 'ملاحظة';
         const d = getVal(n, ['التفاصيل', 'details', 'note']) || '';
         return `• ${t}${d ? `: ${d}` : ''}`;
       }).join('\n');
     }
 
-    // 5) استفسارات الفترات الزمنية
-    if (/فتر|وقت|مواعيد|ساع/i.test(q) && !/ماد|مقرر/i.test(q)) {
-      if (!periods.length) return 'لا توجد فترات زمنية مسجلة في البيانات الحالية.';
-      const filtered = periods.filter(p => normAr(Object.values(p).join(' ')).includes(q) || (qStem && normAr(Object.values(p).join(' ')).includes(qStem)));
-      const list = filtered.length ? filtered : periods;
-      return list.slice(0, 10).map(p => {
+    // 6) الفترات الزمنية
+    if (/فتر|وقت|مواعيد/i.test(q)) {
+      if (!periods.length) return 'لا توجد فترات زمنية مسجلة.';
+      return periods.slice(0, 12).map(p => {
         const day = getVal(p, ['أيام الدراسة *', 'أيام الدراسة', 'اليوم', 'day']);
         const num = getVal(p, ['رقم الفترة *', 'رقم الفترة', 'period']);
         const st = getVal(p, ['بداية الفترة *', 'بداية الفترة', 'start']);
@@ -263,26 +285,25 @@ export class SheetChatBot {
       }).join('\n');
     }
 
-    // 6) استفسارات المواد / الدكاترة / الجداول بالبحث المباشر في الحقول
+    // 7) بحث عام في المواد والجدول والمجموعات
     const tokens = q.split(/[\s،,؟?!:؛()\[\]"'\/\\-]+/)
-      .map(normalizeToken)
+      .map(flexToken)
       .filter(t => t && (t.length >= 2 || /^\d+$/.test(t)));
 
     const allItems = [
-      ...courses.map(r => ({ type: 'course', r })),
-      ...faculty.map(r => ({ type: 'faculty', r })),
-      ...groups.map(r => ({ type: 'group', r })),
-      ...schedules.map(r => ({ type: 'schedule', r })),
+      ...courses.map(r => ({ kind: 'course', r })),
+      ...faculty.map(r => ({ kind: 'faculty', r })),
+      ...groups.map(r => ({ kind: 'group', r })),
+      ...schedules.map(r => ({ kind: 'schedule', r })),
     ];
 
     const hits = allItems
       .map(entry => {
         const txt = normAr(Object.values(entry.r).filter(v => v !== undefined && v !== null).join(' '));
-        const stemTxt = txt.split(/\s+/).map(normalizeToken).join(' ');
         let score = 0;
-        if (txt.includes(q)) score += 10;
+        if (q.length >= 2 && txt.includes(q)) score += 10;
         for (const t of tokens) {
-          if (txt.includes(t) || stemTxt.includes(t)) score += 3;
+          if (txt.includes(t)) score += 3;
         }
         return { ...entry, score };
       })
@@ -296,7 +317,7 @@ export class SheetChatBot {
 
     return hits.map(h => {
       const r = h.r;
-      if (h.type === 'course') {
+      if (h.kind === 'course') {
         const subj = getVal(r, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
         const yr = getVal(r, ['الفرقة *', 'الفرقة', 'yearLevel']);
         const dept = getVal(r, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']);
@@ -304,7 +325,7 @@ export class SheetChatBot {
         const ast = getVal(r, ['المعيدين / السكاشن', 'assistant']);
         return `• ${subj}${[yr, dept].filter(Boolean).length ? ` (${[yr, dept].filter(Boolean).join(' - ')})` : ''}${doc ? ` | د. ${doc}` : ''}${ast ? ` | معيد: ${ast}` : ''}`;
       }
-      if (h.type === 'faculty') {
+      if (h.kind === 'faculty') {
         const name = getVal(r, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name']) || 'عضو';
         const role = getVal(r, ['الدرجة الوظيفية *', 'الدرجة الوظيفية', 'role']);
         const dept = getVal(r, ['القسم *', 'القسم', 'department']);
@@ -336,10 +357,10 @@ export class SheetChatBot {
           </div>
         </div>
         <div class="scb-quick">
+          <button class="scb-qbtn" data-q="أعضاء هيئة التدريس" type="button">هيئة التدريس</button>
           <button class="scb-qbtn" data-q="الأقسام" type="button">الأقسام</button>
           <button class="scb-qbtn" data-q="قواعد الكلية" type="button">قواعد الكلية</button>
           <button class="scb-qbtn" data-q="ملاحظات المراجعة" type="button">ملاحظات المراجعة</button>
-          <button class="scb-qbtn" data-q="الفترات الزمنية" type="button">الفترات الزمنية</button>
           <button class="scb-qbtn" data-q="المدرجات" type="button">المدرجات</button>
         </div>
         <div id="scbMsgs" class="scb-msgs"></div>
