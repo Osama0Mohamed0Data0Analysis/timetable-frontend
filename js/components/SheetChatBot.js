@@ -23,177 +23,89 @@ function normAr(s) {
 
 function toNum(v) {
   if (v === undefined || v === null) return 0;
-  const cleaned = normAr(v).replace(/[^\d.-]/g, '');
-  const n = parseFloat(cleaned);
+  const n = parseFloat(normAr(v).replace(/[^\d.-]/g, ''));
   return Number.isFinite(n) ? n : 0;
 }
 
-function stemWord(w) {
-  let s = normAr(w).replace(/[^\p{L}\p{N}_-]+/gu, '');
-  if (s.length > 3 && s.indexOf('ال') === 0) {
-    s = s.slice(2);
-  }
-  if (s.length > 4 && (s.indexOf('لل') === 0 || s.indexOf('بال') === 0 || s.indexOf('كال') === 0)) {
-    s = s.slice(3);
-  }
-  return s;
-}
-
-function extractQueryTerms(rawQuery) {
-  const stop = new Set([
-    'ما', 'ماذا', 'متي', 'اين', 'كيف', 'لماذا', 'هل', 'كم', 'من', 'في', 'عن', 'علي', 'الي',
-    'بكام', 'ايه', 'اللي', 'التي', 'الذي', 'الذين', 'ده', 'دي', 'دول', 'كل', 'جميع', 'بيانات',
-    'معلومات', 'داتا', 'شيت', 'جدول', 'لو', 'سمحت', 'عايز', 'اعرف', 'هات', 'قولي', 'قلي',
-    'ممكن', 'بتاع', 'بتاعه', 'بتاعت', 'الخاصه', 'الخاص', 'المتعلقه', 'المتعلق', 'بخصوص', 'مين'
-  ]);
-  const parts = normAr(rawQuery).split(/[\s،,؟?!:؛()\[\]"'\/\\-]+/).filter(Boolean);
-  const terms = new Set();
-  parts.forEach(function (p) {
-    if (stop.has(p)) return;
-    if (p.length >= 2 || /^\d+$/.test(p)) terms.add(p);
-    const st = stemWord(p);
-    if (st && (st.length >= 2 || /^\d+$/.test(st))) terms.add(st);
-  });
-  return Array.from(terms);
-}
-
-function flattenSheetData(data) {
-  const records = [];
-  if (!data || typeof data !== 'object') return records;
-
-  const sourcesToScan = [];
-  const rootObj = Array.isArray(data) ? { schedules: data } : data;
-
-  Object.keys(rootObj).forEach(function (key) {
-    const val = rootObj[key];
-    if (Array.isArray(val)) {
-      sourcesToScan.push({ tab: key, rows: val });
-    } else if (val && typeof val === 'object') {
-      Object.keys(val).forEach(function (subKey) {
-        if (Array.isArray(val[subKey])) {
-          sourcesToScan.push({ tab: subKey, rows: val[subKey] });
-        }
-      });
+function getVal(item, keys) {
+  if (!item || typeof item !== 'object') return '';
+  const objKeys = Object.keys(item);
+  for (let i = 0; i < keys.length; i++) {
+    const target = normAr(keys[i]);
+    for (let j = 0; j < objKeys.length; j++) {
+      const k = objKeys[j];
+      if (normAr(k) === target) {
+        const v = item[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+      }
     }
-  });
-
-  sourcesToScan.forEach(function (src) {
-    src.rows.forEach(function (row) {
-      if (!row || typeof row !== 'object') return;
-      const entries = [];
-      const map = {};
-      Object.keys(row).forEach(function (k) {
-        const cleanKey = String(k || '').trim();
-        const rawVal = row[k];
-        if (rawVal === undefined || rawVal === null) return;
-        const valStr = String(rawVal).trim();
-        if (!valStr || valStr === 'NaN' || valStr === 'null' || valStr === 'undefined') return;
-        entries.push({ key: cleanKey, value: valStr });
-        map[normAr(cleanKey)] = valStr;
-      });
-      if (!entries.length) return;
-
-      const fullText = normAr(
-        entries.map(function (e) { return e.key + ' ' + e.value; }).join(' ')
-      );
-      const stemmedText = normAr(
-        fullText.split(/\s+/).map(stemWord).join(' ')
-      );
-
-      records.push({
-        entries: entries,
-        map: map,
-        fullText: fullText,
-        stemmedText: stemmedText
-      });
-    });
-  });
-
-  return records;
-}
-
-function pickField(rec, keys) {
-  const entryKeys = Object.keys(rec.map);
-  for (let i = 0; i < keys.length; i++) {
-    const nk = normAr(keys[i]);
-    if (rec.map[nk]) return rec.map[nk];
   }
   for (let i = 0; i < keys.length; i++) {
-    const nk = normAr(keys[i]);
-    for (let j = 0; j < entryKeys.length; j++) {
-      const ek = entryKeys[j];
-      if (ek.indexOf(nk) !== -1) return rec.map[ek];
+    const target = normAr(keys[i]);
+    if (!target) continue;
+    for (let j = 0; j < objKeys.length; j++) {
+      const k = objKeys[j];
+      const nk = normAr(k);
+      if (nk.indexOf(target) !== -1) {
+        if (target.indexOf('ماده') !== -1 && nk.indexOf('كود') !== -1) continue;
+        const v = item[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+      }
     }
   }
   return '';
 }
 
-function formatDirectLine(rec) {
-  const subj = pickField(rec, ['اسم المادة', 'subject']);
-  const code = pickField(rec, ['كود المادة', 'code']);
-  const year = pickField(rec, ['الفرقة', 'yearLevel']);
-  const dept = pickField(rec, ['الشعبة / القسم', 'القسم', 'department']);
-  const sem = pickField(rec, ['الفصل الدراسي', 'semester']);
-  const lec = pickField(rec, ['ساعات المحاضرة أسبوعياً', 'ساعات المحاضرة']);
-  const sec = pickField(rec, ['ساعات السكشن أسبوعياً', 'ساعات السكشن']);
-  const doc = pickField(rec, ['د. المحاضرة', 'doctor']);
-  const ast = pickField(rec, ['المعيدين / السكاشن', 'assistant']);
-  const hall = pickField(rec, ['القاعة', 'رقم القاعة', 'اسم القاعة', 'hall', 'room']);
-
-  if (subj) {
-    const line = [];
-    line.push('• ' + subj + (code ? ' (كود ' + code + ')' : ''));
-    const scope = [year, dept, sem ? 'الفصل ' + sem : ''].filter(Boolean).join('، ');
-    if (scope) line.push(scope);
-    const hrs = [];
-    if (lec) hrs.push('محاضرات: ' + lec + 'س');
-    if (sec) hrs.push('سكاشن: ' + sec + 'س');
-    if (hrs.length) line.push(hrs.join('، '));
-    if (doc) line.push('د. ' + doc);
-    if (ast) line.push('معيد: ' + ast);
-    if (hall) line.push('قاعة: ' + hall);
-    return line.join(' | ');
+function pickArr(data, keys) {
+  if (!data || typeof data !== 'object') return [];
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    if (Array.isArray(data[k])) return data[k];
   }
-
-  const person = pickField(rec, ['اسم الدكتور / المعيد', 'name']);
-  if (person) {
-    const role = pickField(rec, ['الدرجة الوظيفية', 'role']);
-    const pDept = pickField(rec, ['القسم', 'department']);
-    const note = pickField(rec, ['ملاحظات', 'notes']);
-    return '• ' + person +
-      (role ? ' — ' + role : '') +
-      (pDept ? '، قسم ' + pDept : '') +
-      (note ? ' (' + note + ')' : '');
+  if (data.data && typeof data.data === 'object') {
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (Array.isArray(data.data[k])) return data.data[k];
+    }
   }
+  return [];
+}
 
-  const roomNum = pickField(rec, ['رقم القاعة', 'اسم القاعة', 'hall', 'room']);
-  const roomType = pickField(rec, ['النوع', 'type']);
-  if (roomNum || roomType) {
-    const cap = pickField(rec, ['السعة (عدد الطلاب)', 'السعة', 'capacity']);
-    const bldg = pickField(rec, ['المبنى', 'building']);
-    const flr = pickField(rec, ['الدور', 'floor']);
-    return '• ' + [roomType, roomNum].filter(Boolean).join(' ') +
-      (cap ? ' — سعة ' + cap + ' طالب' : '') +
-      ([bldg, flr].filter(Boolean).length ? ' (' + [bldg, flr].filter(Boolean).join('، ') + ')' : '');
-  }
+function rowText(row) {
+  if (!row || typeof row !== 'object') return '';
+  return normAr(
+    Object.keys(row)
+      .filter(function (k) { return String(k).indexOf('Unnamed') !== 0; })
+      .map(function (k) { return k + ' ' + (row[k] ?? ''); })
+      .join(' ')
+  );
+}
 
-  const pairs = rec.entries
-    .filter(function (e) { return e.key.indexOf('Unnamed') !== 0; })
-    .slice(0, 5)
-    .map(function (e) {
-      return e.key.replace(/\s*\*\s*$/, '').trim() + ': ' + e.value;
-    });
-  return '• ' + pairs.join(' — ');
+function extractKeywords(q) {
+  const ignore = new Set([
+    'ما', 'ماذا', 'متي', 'اين', 'كيف', 'لماذا', 'هل', 'كم', 'من', 'في', 'عن', 'علي', 'الي',
+    'ايه', 'اللي', 'التي', 'الذي', 'ده', 'دي', 'دول', 'كل', 'جميع', 'بيانات', 'معلومات',
+    'داتا', 'شيت', 'جدول', 'لو', 'سمحت', 'عايز', 'اعرف', 'هات', 'قولي', 'قلي', 'ممكن', 'مين'
+  ]);
+  return normAr(q)
+    .split(/[\s،,؟?!:؛()\[\]"'\/\\-]+/)
+    .map(function (w) {
+      let s = w.trim();
+      if (s.length > 3 && s.indexOf('ال') === 0) s = s.slice(2);
+      return s;
+    })
+    .filter(function (w) { return w && !ignore.has(w) && (w.length >= 2 || /^\d+$/.test(w)); });
 }
 
 export class SheetChatBot {
   constructor(api) {
     this.api = api;
     this.isOpen = false;
+    this.syncing = false;
     this.messages = [
       {
         role: 'bot',
-        text: 'اسألني مباشرة عن أي مادة، دكتور أو معيد، قاعة، فرقة، قسم، أو قاعدة.'
+        text: 'أهلاً بك! اسألني عن المواد، الدكاترة والمعيدين، القاعات والسعات، المجموعات، الفترات، قواعد الكلية، أو ملاحظات المراجعة.'
       }
     ];
   }
@@ -204,7 +116,7 @@ export class SheetChatBot {
     st.id = 'scb-styles';
     st.textContent = [
       '.scb-fab{position:fixed;bottom:22px;left:22px;z-index:9999;background:#0f3566;color:#fff;border:2px solid #f59e0b;border-radius:999px;padding:12px 18px;font:inherit;font-weight:700;font-size:.9rem;cursor:pointer;box-shadow:0 8px 24px rgba(15,23,42,.22);display:flex;align-items:center;gap:8px}',
-      '.scb-panel{position:fixed;bottom:78px;left:22px;z-index:9999;width:min(435px,calc(100vw - 32px));max-height:76vh;background:#fff;border:1.5px solid #cbd5e1;border-radius:14px;box-shadow:0 16px 36px rgba(15,23,42,.24);display:flex;flex-direction:column;overflow:hidden;direction:rtl;text-align:right}',
+      '.scb-panel{position:fixed;bottom:78px;left:22px;z-index:9999;width:min(420px,calc(100vw - 32px));max-height:74vh;background:#fff;border:1.5px solid #cbd5e1;border-radius:14px;box-shadow:0 16px 36px rgba(15,23,42,.24);display:flex;flex-direction:column;overflow:hidden;direction:rtl;text-align:right}',
       '.scb-head{background:linear-gradient(135deg,#071b38 0%,#0f3566 100%);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px}',
       '.scb-title{margin:0;font-size:.96rem;font-weight:800}',
       '.scb-hbtns{display:flex;gap:6px;align-items:center}',
@@ -212,7 +124,7 @@ export class SheetChatBot {
       '.scb-quick{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}',
       '.scb-qbtn{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:999px;padding:4px 10px;font:inherit;font-size:.75rem;font-weight:600;cursor:pointer}',
       '.scb-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#f1f5f9}',
-      '.scb-msg{max-width:93%;padding:10px 13px;border-radius:10px;font-size:.84rem;line-height:1.65;white-space:pre-line}',
+      '.scb-msg{max-width:92%;padding:9px 12px;border-radius:10px;font-size:.84rem;line-height:1.55;white-space:pre-line}',
       '.scb-msg.bot{background:#fff;color:#0f172a;border:1px solid #dbe2ee;align-self:flex-start}',
       '.scb-msg.user{background:#1e3a8a;color:#fff;align-self:flex-end}',
       '.scb-form{display:flex;gap:8px;padding:10px;background:#fff;border-top:1px solid #e2e8f0}',
@@ -222,99 +134,150 @@ export class SheetChatBot {
     document.head.appendChild(st);
   }
 
-  async fetchLiveSheetData(force) {
-    const shouldForce = Boolean(force);
+  getFastData() {
     const cached = localStorage.getItem('sheet_cache_data');
-    const cachedTime = Number(localStorage.getItem('sheet_cache_time') || 0);
-    const now = Date.now();
-
-    if (!shouldForce && cached && now - cachedTime < 120000) {
+    if (cached) {
       try {
         const parsed = JSON.parse(cached);
         if (parsed) return parsed;
       } catch (e) {}
     }
+    return null;
+  }
 
-    if (this.api && typeof this.api.getData === 'function') {
-      try {
+  async syncNow() {
+    if (this.syncing) return this.getFastData() || {};
+    this.syncing = true;
+    try {
+      if (this.api && typeof this.api.getData === 'function') {
         const fresh = await this.api.getData();
         if (fresh) {
           localStorage.setItem('sheet_cache_data', JSON.stringify(fresh));
-          localStorage.setItem('sheet_cache_time', String(now));
+          localStorage.setItem('sheet_cache_time', String(Date.now()));
           return fresh;
         }
-      } catch (err) {
-        console.error('ChatBot fetchLiveSheetData error:', err);
       }
+    } catch (e) {
+      console.error('ChatBot sync error:', e);
+    } finally {
+      this.syncing = false;
     }
-
-    if (cached) {
-      try {
-        return JSON.parse(cached) || {};
-      } catch (e) {}
-    }
-    return {};
+    return this.getFastData() || {};
   }
 
-  async answerQuery(rawQuery, forceRefresh) {
+  answerQuery(rawQuery) {
     const cleanQ = String(rawQuery || '').trim();
     if (!cleanQ) return 'اكتب سؤالك.';
 
-    const data = await this.fetchLiveSheetData(Boolean(forceRefresh));
-    const records = flattenSheetData(data);
-    if (!records.length) return 'لا توجد بيانات متاحة حالياً.';
-
-    const terms = extractQueryTerms(cleanQ);
-    const qNorm = normAr(cleanQ);
-    const wantsCount = /كم|عدد|اجمالي|إجمالي|مجموع/i.test(qNorm);
-
-    const scored = records.map(function (rec) {
-      let score = 0;
-      if (qNorm.length >= 2 && rec.fullText.indexOf(qNorm) !== -1) {
-        score += 12;
-      }
-      let matchedCount = 0;
-      terms.forEach(function (t) {
-        const st = stemWord(t);
-        const inFull = rec.fullText.indexOf(t) !== -1;
-        const inStem = st && rec.stemmedText.indexOf(st) !== -1;
-        if (inFull) {
-          score += 4;
-          matchedCount += 1;
-        } else if (inStem) {
-          score += 2.5;
-          matchedCount += 1;
-        }
-      });
-      if (terms.length > 1 && matchedCount === terms.length) {
-        score += 6;
-      }
-      return { rec: rec, score: score, matchedCount: matchedCount };
-    }).filter(function (x) { return x.score > 0; })
-      .sort(function (a, b) { return b.score - a.score || b.matchedCount - a.matchedCount; });
-
-    if (!scored.length) {
-      return 'لا توجد نتائج مطابقة لسؤالك.';
+    const data = this.getFastData();
+    if (!data) {
+      return 'لا توجد بيانات محمّلة بعد. اضغط على «تحديث» مرة واحدة لتحميل البيانات.';
     }
 
-    const lines = [];
-    if (wantsCount) {
-      let numSum = 0;
-      scored.forEach(function (x) {
-        x.rec.entries.forEach(function (e) {
-          if (/سع|ساع|طلاب|عدد/i.test(e.key)) {
-            numSum += toNum(e.value);
-          }
+    const q = normAr(cleanQ);
+    const keys = extractKeywords(cleanQ);
+    const isCount = /كم|عدد|اجمالي|إجمالي|مجموع/i.test(q);
+
+    const courses = pickArr(data, ['courses', 'subjects', 'materials', 'المواد', 'المواد الدراسية']);
+    const faculty = pickArr(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
+    const rooms = pickArr(data, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
+    const schedules = Array.isArray(data) ? data : pickArr(data, ['schedules', 'schedule', 'الجداول']);
+    const groups = pickArr(data, ['groups', 'الفرق والمجموعات']);
+    const periods = pickArr(data, ['periods', 'timeSlots', 'الفترات الزمنية', 'الفترات']);
+    const rules = pickArr(data, ['rules', 'collegeRules', 'قواعد الكلية']);
+    const notes = pickArr(data, ['notes', 'reviewNotes', 'ملاحظات المراجعة', 'ملاحظات']);
+
+    if (isCount && /ماد|مقرر/i.test(q) && keys.length <= 2) {
+      const lec = courses.reduce(function (s, c) { return s + toNum(getVal(c, ['ساعات المحاضرة أسبوعياً', 'ساعات المحاضرة'])); }, 0);
+      const sec = courses.reduce(function (s, c) { return s + toNum(getVal(c, ['ساعات السكشن أسبوعياً', 'ساعات السكاشن'])); }, 0);
+      return '• عدد صفوف المواد: ' + courses.length + ' | ساعات المحاضرات: ' + lec + 'س | ساعات السكاشن: ' + sec + 'س';
+    }
+
+    if (isCount && /دكتور|معيد|هيئه|تدريس/i.test(q) && keys.length <= 2) {
+      return '• عدد أعضاء هيئة التدريس والمعيدين: ' + faculty.length;
+    }
+
+    if (isCount && /قاع|مدرج|معمل|سع/i.test(q) && keys.length <= 2) {
+      const cap = rooms.reduce(function (s, r) { return s + toNum(getVal(r, ['السعة (عدد الطلاب)', 'السعة', 'capacity'])); }, 0);
+      return '• عدد القاعات والأماكن: ' + rooms.length + ' | إجمالي السعة: ' + cap.toLocaleString('en-US') + ' طالب';
+    }
+
+    const pool = []
+      .concat(courses.map(function (r) { return { kind: 'course', row: r, txt: rowText(r) }; }))
+      .concat(faculty.map(function (r) { return { kind: 'faculty', row: r, txt: rowText(r) }; }))
+      .concat(rooms.map(function (r) { return { kind: 'room', row: r, txt: rowText(r) }; }))
+      .concat(rules.map(function (r) { return { kind: 'rule', row: r, txt: rowText(r) }; }))
+      .concat(notes.map(function (r) { return { kind: 'note', row: r, txt: rowText(r) }; }))
+      .concat(periods.map(function (r) { return { kind: 'period', row: r, txt: rowText(r) }; }))
+      .concat(groups.map(function (r) { return { kind: 'group', row: r, txt: rowText(r) }; }))
+      .concat(schedules.map(function (r) { return { kind: 'schedule', row: r, txt: rowText(r) }; }));
+
+    const terms = keys.length ? keys : [q];
+    const matches = pool
+      .map(function (item) {
+        let score = 0;
+        if (item.txt.indexOf(q) !== -1) score += 10;
+        terms.forEach(function (t) {
+          if (item.txt.indexOf(t) !== -1) score += 3;
         });
-      });
-      lines.push('• العدد: ' + scored.length + (numSum > 0 ? ' | الإجمالي الرقمي: ' + numSum.toLocaleString('en-US') : ''));
+        return { item: item, score: score };
+      })
+      .filter(function (x) { return x.score > 0; })
+      .sort(function (a, b) { return b.score - a.score; })
+      .slice(0, 8)
+      .map(function (x) { return x.item; });
+
+    if (!matches.length) {
+      return 'لم أجد نتيجة مطابقة في البيانات الحالية.';
     }
 
-    scored.slice(0, 8).forEach(function (x) {
-      lines.push(formatDirectLine(x.rec));
-    });
-
-    return lines.join('\n');
+    return matches.map(function (m) {
+      const r = m.row;
+      if (m.kind === 'course') {
+        const subj = getVal(r, ['اسم المادة', 'subject']) || 'مادة';
+        const yr = getVal(r, ['الفرقة', 'yearLevel']);
+        const dept = getVal(r, ['الشعبة / القسم', 'القسم', 'department']);
+        const lec = getVal(r, ['ساعات المحاضرة أسبوعياً', 'ساعات المحاضرة']);
+        const sec = getVal(r, ['ساعات السكشن أسبوعياً', 'ساعات السكاشن']);
+        const doc = getVal(r, ['د. المحاضرة', 'doctor']);
+        const ast = getVal(r, ['المعيدين / السكاشن', 'assistant']);
+        return '• ' + subj +
+          ([yr, dept].filter(Boolean).length ? ' (' + [yr, dept].filter(Boolean).join(' - ') + ')' : '') +
+          (lec || sec ? ' | محاضرة: ' + (lec || 0) + 'س، سكشن: ' + (sec || 0) + 'س' : '') +
+          (doc ? ' | د. ' + doc : '') +
+          (ast ? ' | معيد: ' + ast : '');
+      }
+      if (m.kind === 'faculty') {
+        const name = getVal(r, ['اسم الدكتور / المعيد', 'name']) || 'عضو';
+        const role = getVal(r, ['الدرجة الوظيفية', 'role']);
+        const dept = getVal(r, ['القسم', 'department']);
+        const note = getVal(r, ['ملاحظات', 'notes']);
+        return '• ' + name + (role ? ' (' + role + ')' : '') + (dept ? ' - ' + dept : '') + (note ? ' | ' + note : '');
+      }
+      if (m.kind === 'room') {
+        const num = getVal(r, ['رقم القاعة', 'اسم القاعة', 'hall', 'room']);
+        const typ = getVal(r, ['النوع', 'type']);
+        const cap = getVal(r, ['السعة (عدد الطلاب)', 'السعة', 'capacity']);
+        const bld = getVal(r, ['المبنى', 'building']);
+        const flr = getVal(r, ['الدور', 'floor']);
+        return '• ' + [typ, num].filter(Boolean).join(' ') + (cap ? ' — سعة ' + cap + ' طالب' : '') + ([bld, flr].filter(Boolean).length ? ' (' + [bld, flr].filter(Boolean).join('، ') + ')' : '');
+      }
+      if (m.kind === 'rule') {
+        const b = getVal(r, ['البند', 'item', 'title']) || 'بند';
+        const v = getVal(r, ['القيمة', 'value', 'desc']) || '';
+        return '• ' + b + (v ? ': ' + v : '');
+      }
+      if (m.kind === 'note') {
+        const t = getVal(r, ['الموضوع', 'topic', 'title']) || 'ملاحظة';
+        const d = getVal(r, ['التفاصيل', 'details', 'note']) || '';
+        return '• ' + t + (d ? ': ' + d : '');
+      }
+      const vals = Object.keys(r)
+        .filter(function (k) { return String(k).indexOf('Unnamed') !== 0 && r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== ''; })
+        .slice(0, 5)
+        .map(function (k) { return String(r[k]).trim(); });
+      return '• ' + vals.join(' | ');
+    }).join('\n');
   }
 
   mount(parentContainer) {
@@ -365,22 +328,14 @@ export class SheetChatBot {
       box.scrollTop = box.scrollHeight;
     };
 
-    const submitQuestion = async function (text, forceRefresh) {
-      const clean = String(text || '').trim();
-      if (!clean) return;
-      self.messages.push({ role: 'user', text: clean });
-      renderMessages();
-
-      const reply = await self.answerQuery(clean, Boolean(forceRefresh));
-      self.messages.push({ role: 'bot', text: reply });
-      renderMessages();
-    };
-
     if (fab && panel) {
       fab.onclick = function () {
         self.isOpen = !self.isOpen;
         panel.style.display = self.isOpen ? 'flex' : 'none';
         if (self.isOpen) {
+          if (!self.getFastData() && self.api && typeof self.api.getData === 'function') {
+            self.syncNow().then(renderMessages);
+          }
           renderMessages();
           if (input) input.focus();
         }
@@ -389,9 +344,14 @@ export class SheetChatBot {
 
     if (syncBtn) {
       syncBtn.onclick = async function () {
-        await self.fetchLiveSheetData(true);
-        self.messages.push({ role: 'bot', text: '• تم تحديث البيانات.' });
-        renderMessages();
+        syncBtn.textContent = '...';
+        await self.syncNow();
+        syncBtn.textContent = 'تحديث';
+        const lastMsg = self.messages[self.messages.length - 1];
+        if (!lastMsg || lastMsg.text !== '• تم تحديث البيانات.') {
+          self.messages.push({ role: 'bot', text: '• تم تحديث البيانات.' });
+          renderMessages();
+        }
       };
     }
 
@@ -404,19 +364,4 @@ export class SheetChatBot {
 
     root.querySelectorAll('.scb-qbtn').forEach(function (btn) {
       btn.onclick = function () {
-        submitQuestion(btn.dataset.q || '', false);
-      };
-    });
-
-    if (form && input) {
-      form.onsubmit = function (e) {
-        e.preventDefault();
-        const val = input.value;
-        input.value = '';
-        submitQuestion(val, false);
-      };
-    }
-
-    renderMessages();
-  }
-}
+        const qText = btn.dataset.q || '';
