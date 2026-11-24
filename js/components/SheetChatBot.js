@@ -31,34 +31,6 @@ function toNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function stemToken(w) {
-  let s = normAr(w).replace(/[^\p{L}\p{N}_-]+/gu, '');
-  if (s.length > 3 && s.startsWith('ال')) s = s.slice(2);
-  if (s.length > 4 && (s.startsWith('لل') || s.startsWith('بال') || s.startsWith('كال'))) {
-    s = s.slice(3);
-  }
-  return s;
-}
-
-function getField(map, keys) {
-  const mapKeys = Object.keys(map);
-  for (const k of keys) {
-    const nk = normAr(k);
-    if (map[nk]) return map[nk];
-  }
-  for (const k of keys) {
-    const nk = normAr(k);
-    if (!nk) continue;
-    for (const mk of mapKeys) {
-      if (mk.includes(nk)) {
-        if (nk.includes('ماده') && mk.includes('كود')) continue;
-        return map[mk];
-      }
-    }
-  }
-  return '';
-}
-
 function pickArray(data, keys) {
   if (!data || typeof data !== 'object') return [];
   for (const k of keys) {
@@ -72,128 +44,55 @@ function pickArray(data, keys) {
   return [];
 }
 
-function formatRowAnswer(row, map) {
-  const subj = getField(map, ['اسم المادة', 'subject']);
-  if (subj) {
-    const code = getField(map, ['كود المادة', 'code']);
-    const year = getField(map, ['الفرقة', 'yearLevel']);
-    const dept = getField(map, ['الشعبة / القسم', 'القسم', 'department']);
-    const sem = getField(map, ['الفصل الدراسي', 'semester']);
-    const lec = getField(map, ['ساعات المحاضرة أسبوعياً', 'ساعات المحاضرة']);
-    const sec = getField(map, ['ساعات السكشن أسبوعياً', 'ساعات السكاشن']);
-    const doc = getField(map, ['د. المحاضرة', 'doctor']);
-    const ast = getField(map, ['المعيدين / السكاشن', 'assistant']);
-    const hall = getField(map, ['القاعة', 'رقم القاعة', 'اسم القاعة', 'hall', 'room']);
-
-    const parts = ['• ' + subj + (code ? ' (' + code + ')' : '')];
-    const scope = [year, dept, sem ? 'الفصل ' + sem : ''].filter(Boolean).join('، ');
-    if (scope) parts.push(scope);
-    const hrs = [];
-    if (lec) hrs.push('محاضرة: ' + lec + 'س');
-    if (sec) hrs.push('سكشن: ' + sec + 'س');
-    if (hrs.length) parts.push(hrs.join('، '));
-    if (doc) parts.push('د. ' + doc);
-    if (ast) parts.push('معيد: ' + ast);
-    if (hall) parts.push('قاعة: ' + hall);
-    return parts.join(' | ');
-  }
-
-  const person = getField(map, ['اسم الدكتور / المعيد', 'name']);
-  if (person) {
-    const role = getField(map, ['الدرجة الوظيفية', 'role']);
-    const pDept = getField(map, ['القسم', 'department']);
-    const note = getField(map, ['ملاحظات', 'notes']);
-    return '• ' + person +
-      (role ? ' — ' + role : '') +
-      (pDept ? '، ' + pDept : '') +
-      (note ? ' (' + note + ')' : '');
-  }
-
-  const roomNum = getField(map, ['رقم القاعة', 'اسم القاعة', 'hall', 'room']);
-  const roomType = getField(map, ['النوع', 'type']);
-  if (roomNum || roomType) {
-    const cap = getField(map, ['السعة (عدد الطلاب)', 'السعة', 'capacity']);
-    const bldg = getField(map, ['المبنى', 'building']);
-    const flr = getField(map, ['الدور', 'floor']);
-    return '• ' + [roomType, roomNum].filter(Boolean).join(' ') +
-      (cap ? ' — سعة ' + cap + ' طالب' : '') +
-      ([bldg, flr].filter(Boolean).length ? ' (' + [bldg, flr].filter(Boolean).join('، ') + ')' : '');
-  }
-
-  const entries = Object.keys(row)
-    .filter(k => !String(k).startsWith('Unnamed') && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '')
-    .slice(0, 5)
-    .map(k => String(k).replace(/\s*\*\s*$/, '').trim() + ': ' + String(row[k]).trim());
-  return '• ' + entries.join(' — ');
-}
-
-function buildSearchIndex(data) {
-  const records = [];
-  if (!data || typeof data !== 'object') return records;
-
-  const root = Array.isArray(data) ? { schedules: data } : data;
-  const arrays = [];
-
-  for (const key of Object.keys(root)) {
-    const val = root[key];
-    if (Array.isArray(val)) {
-      arrays.push(val);
-    } else if (val && typeof val === 'object') {
-      for (const subKey of Object.keys(val)) {
-        if (Array.isArray(val[subKey])) arrays.push(val[subKey]);
-      }
-    }
-  }
-
-  for (const arr of arrays) {
-    for (const row of arr) {
-      if (!row || typeof row !== 'object') continue;
-      const map = {};
-      const chunks = [];
-      let numSum = 0;
-
-      for (const k of Object.keys(row)) {
-        const cleanK = String(k || '').trim();
-        const rawV = row[k];
-        if (rawV === undefined || rawV === null) continue;
-        const valStr = String(rawV).trim();
-        if (!valStr || valStr === 'NaN' || valStr === 'null' || valStr === 'undefined') continue;
-
-        map[normAr(cleanK)] = valStr;
-        chunks.push(cleanK + ' ' + valStr);
-        if (/سع|ساع|طلاب|عدد/i.test(cleanK)) {
-          numSum += toNum(valStr);
+function getVal(row, keys) {
+  if (!row || typeof row !== 'object') return '';
+  const objKeys = Object.keys(row);
+  for (const pk of keys) {
+    const npk = normAr(pk);
+    for (const k of objKeys) {
+      if (normAr(k) === npk) {
+        const v = row[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== 'NaN') {
+          return String(v).trim();
         }
       }
-
-      if (!chunks.length) continue;
-      const fullText = normAr(chunks.join(' '));
-      const stemmedText = fullText.split(/\s+/).map(stemToken).join(' ');
-      records.push({
-        row,
-        map,
-        fullText,
-        stemmedText,
-        numSum,
-        formatted: formatRowAnswer(row, map),
-      });
     }
   }
+  for (const pk of keys) {
+    const npk = normAr(pk);
+    if (!npk) continue;
+    for (const k of objKeys) {
+      const nk = normAr(k);
+      if (nk.includes(npk)) {
+        if (npk.includes('ماده') && nk.includes('كود')) continue;
+        const v = row[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== 'NaN') {
+          return String(v).trim();
+        }
+      }
+    }
+  }
+  return '';
+}
 
-  return records;
+function normalizeToken(w) {
+  let s = normAr(w).replace(/[^\p{L}\p{N}_-]+/gu, '');
+  if (s.length > 3 && s.startsWith('ال')) s = s.slice(2);
+  if (s.endsWith('ات') && s.length > 4) s = s.slice(0, -2);
+  else if (s.endsWith('ين') && s.length > 4) s = s.slice(0, -2);
+  else if (s.endsWith('ون') && s.length > 4) s = s.slice(0, -2);
+  return s;
 }
 
 export class SheetChatBot {
   constructor(api) {
     this.api = api;
     this.isOpen = false;
-    this.index = [];
-    this.lastDataRef = null;
-    this.syncPromise = null;
+    this.syncing = false;
     this.messages = [
       {
         role: 'bot',
-        text: 'اسألني مباشرة عن أي مادة، دكتور أو معيد، قاعة، فرقة، قسم، فترة، أو قاعدة.',
+        text: 'اسألني عن الأقسام والشعب، المواد، الدكاترة والمعيدين، القاعات والسعات، الفترات، قواعد الكلية، أو ملاحظات المراجعة.',
       },
     ];
   }
@@ -222,7 +121,7 @@ export class SheetChatBot {
     document.head.appendChild(st);
   }
 
-  readCachedData() {
+  readData() {
     const raw = localStorage.getItem(CACHE_DATA_KEY);
     if (!raw) return null;
     try {
@@ -232,149 +131,192 @@ export class SheetChatBot {
     }
   }
 
-  ensureIndex(data) {
-    if (!data) return;
-    if (data !== this.lastDataRef) {
-      this.lastDataRef = data;
-      this.index = buildSearchIndex(data);
-    }
-  }
+  async syncData(force = false) {
+    if (this.syncing) return this.readData() || {};
+    const cached = this.readData();
+    const t = Number(localStorage.getItem(CACHE_TIME_KEY) || 0);
+    if (!force && cached && (Date.now() - t < CACHE_TTL_MS)) return cached;
 
-  async fetchFullSheetData(force = false) {
-    const cached = this.readCachedData();
-    if (cached) this.ensureIndex(cached);
-
-    const cachedTime = Number(localStorage.getItem(CACHE_TIME_KEY) || 0);
-    const cacheValid = Boolean(cached) && (Date.now() - cachedTime < CACHE_TTL_MS);
-    if (!force && cacheValid) return cached;
-
-    if (this.syncPromise) return this.syncPromise;
-
-    this.syncPromise = (async () => {
-      try {
-        let fresh = null;
-        if (this.api && typeof this.api.getData === 'function') {
-          fresh = await this.api.getData();
-        } else if (this.api && typeof this.api.getSchedules === 'function') {
-          const [schedules, instructors] = await Promise.all([
-            this.api.getSchedules().catch(() => []),
-            typeof this.api.getInstructors === 'function' ? this.api.getInstructors().catch(() => []) : [],
-          ]);
-          fresh = { schedules, instructors };
-        }
-
+    this.syncing = true;
+    try {
+      if (this.api && typeof this.api.getData === 'function') {
+        const fresh = await this.api.getData();
         if (fresh) {
           localStorage.setItem(CACHE_DATA_KEY, JSON.stringify(fresh));
           localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
-          this.ensureIndex(fresh);
           return fresh;
         }
-      } catch (err) {
-        console.error('SheetChatBot sync error:', err);
-      } finally {
-        this.syncPromise = null;
       }
-      return cached || {};
-    })();
-
-    return this.syncPromise;
-  }
-
-  extractTerms(rawQuery) {
-    const stop = new Set([
-      'ما', 'ماذا', 'متي', 'اين', 'كيف', 'لماذا', 'هل', 'كم', 'من', 'في', 'عن', 'علي', 'الي',
-      'ايه', 'اللي', 'التي', 'الذي', 'ده', 'دي', 'دول', 'كل', 'جميع', 'بيانات', 'معلومات',
-      'داتا', 'شيت', 'جدول', 'لو', 'سمحت', 'عايز', 'اعرف', 'هات', 'قولي', 'قلي', 'ممكن', 'مين',
-    ]);
-    const out = new Set();
-    for (const part of normAr(rawQuery).split(/[\s،,؟?!:؛()\[\]"'\/\\-]+/)) {
-      if (!part || stop.has(part)) continue;
-      if (part.length >= 2 || /^\d+$/.test(part)) out.add(part);
-      const st = stemToken(part);
-      if (st && (st.length >= 2 || /^\d+$/.test(st))) out.add(st);
+    } catch (e) {
+      console.error('SheetChatBot sync error:', e);
+    } finally {
+      this.syncing = false;
     }
-    return [...out];
+    return cached || {};
   }
 
   answerQuery(rawQuery) {
     const cleanQ = String(rawQuery || '').trim();
     if (!cleanQ) return 'اكتب سؤالك.';
 
-    const cached = this.readCachedData();
-    if (cached) this.ensureIndex(cached);
-
-    if (!this.index.length) {
-      return 'لا توجد بيانات محمّلة بعد. اضغط على «تحديث» لسحب الداتا من Google Sheets.';
+    const data = this.readData();
+    if (!data) {
+      return 'لا توجد بيانات محمّلة بعد. اضغط على «تحديث».';
     }
 
-    const qNorm = normAr(cleanQ);
-    const terms = this.extractTerms(cleanQ);
-    const searchTerms = terms.length ? terms : [qNorm];
-    const isCount = /كم|عدد|اجمالي|إجمالي|مجموع/i.test(qNorm);
+    const q = normAr(cleanQ);
+    const qStem = normalizeToken(cleanQ);
+    const isCount = /كم|عدد|اجمالي|إجمالي|مجموع/i.test(q);
 
-    if (isCount && searchTerms.length <= 2 && /ماد|مقرر/i.test(qNorm)) {
-      const courses = pickArray(cached, ['courses', 'subjects', 'materials', 'المواد', 'المواد الدراسية']);
-      const lecSum = courses.reduce((s, r) => s + toNum(r['ساعات المحاضرة أسبوعياً *'] ?? r['ساعات المحاضرة أسبوعياً'] ?? r['ساعات المحاضرة']), 0);
-      const secSum = courses.reduce((s, r) => s + toNum(r['ساعات السكشن أسبوعياً'] ?? r['ساعات السكاشن']), 0);
-      return `• عدد صفوف المواد: ${courses.length} | ساعات المحاضرات: ${lecSum}س | ساعات السكاشن: ${secSum}س`;
+    const courses = pickArray(data, ['courses', 'subjects', 'materials', 'المواد', 'المواد الدراسية']);
+    const faculty = pickArray(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
+    const rooms = pickArray(data, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
+    const groups = pickArray(data, ['groups', 'الفرق والمجموعات']);
+    const periods = pickArray(data, ['periods', 'timeSlots', 'الفترات الزمنية', 'الفترات']);
+    const rules = pickArray(data, ['rules', 'collegeRules', 'قواعد الكلية']);
+    const notes = pickArray(data, ['notes', 'reviewNotes', 'ملاحظات المراجعة', 'ملاحظات']);
+    const schedules = Array.isArray(data) ? data : pickArray(data, ['schedules', 'schedule', 'الجداول']);
+
+    // 1) استفسارات الأقسام والشعب والبرامج
+    if (/قسم|اقسام|شعب|شعبه|برنامج|برامج/i.test(q) || qStem === 'قسم' || qStem === 'شعب' || qStem === 'برنامج') {
+      const deptSet = new Set();
+      courses.forEach(r => {
+        const d = getVal(r, ['الشعبة / القسم', 'القسم', 'department']);
+        if (d) deptSet.add(d);
+      });
+      groups.forEach(r => {
+        const d = getVal(r, ['البرنامج / الشعبة', 'الشعبة', 'القسم', 'department']);
+        if (d) deptSet.add(d);
+      });
+      faculty.forEach(r => {
+        const d = getVal(r, ['القسم *', 'القسم', 'department']);
+        if (d) deptSet.add(d);
+      });
+
+      const list = [...deptSet].sort((a, b) => a.localeCompare(b, 'ar'));
+      if (!list.length) return 'لا توجد أقسام أو شعب مسجلة في البيانات الحالية.';
+
+      const prefix = isCount ? `• عدد الأقسام والشعب: ${list.length}\n` : '';
+      return prefix + list.map(d => {
+        const cCount = courses.filter(c => getVal(c, ['الشعبة / القسم', 'القسم', 'department']) === d).length;
+        const fCount = faculty.filter(f => getVal(f, ['القسم *', 'القسم', 'department']) === d).length;
+        const extra = [];
+        if (cCount) extra.push(`${cCount} مادة`);
+        if (fCount) extra.push(`${fCount} عضو هيئة تدريس`);
+        return `• ${d}${extra.length ? ` (${extra.join('، ')})` : ''}`;
+      }).join('\n');
     }
 
-    if (isCount && searchTerms.length <= 2 && /دكتور|معيد|هيئه|تدريس/i.test(qNorm)) {
-      const faculty = pickArray(cached, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
-      return `• عدد أعضاء هيئة التدريس والمعيدين: ${faculty.length}`;
+    // 2) استفسارات القاعات والمدرجات والمعامل والسعات
+    if (/قاع|مدرج|معمل|مبن|دور|سع/i.test(q)) {
+      const matchedRooms = rooms.filter(r => {
+        const txt = normAr(Object.values(r).join(' '));
+        return txt.includes(q) || (qStem && txt.includes(qStem)) || /قاع|مدرج|معمل/i.test(q);
+      });
+      const target = matchedRooms.length ? matchedRooms : rooms;
+      if (!target.length) return 'لا توجد قاعات مسجلة في البيانات الحالية.';
+      const capTotal = target.reduce((s, r) => s + toNum(getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity'])), 0);
+      const head = isCount || /سع|اجمالي|إجمالي/i.test(q)
+        ? [`• عدد القاعات: ${target.length} | إجمالي السعة: ${capTotal.toLocaleString('en-US')} طالب`]
+        : [];
+      return head.concat(target.slice(0, 8).map(r => {
+        const num = getVal(r, ['رقم القاعة', 'اسم القاعة', 'hall', 'room']) || '-';
+        const typ = getVal(r, ['* النوع', 'النوع', 'type']) || 'قاعة';
+        const cap = getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity']);
+        const bld = getVal(r, ['* المبنى', 'المبنى', 'building']);
+        const flr = getVal(r, ['* الدور', 'الدور', 'floor']);
+        return `• ${typ} ${num}${cap ? ` — سعة ${cap} طالب` : ''}${[bld, flr].filter(Boolean).length ? ` (${[bld, flr].filter(Boolean).join('، ')})` : ''}`;
+      })).join('\n');
     }
 
-    if (isCount && searchTerms.length <= 2 && /قاع|مدرج|معمل|سع/i.test(qNorm)) {
-      const rooms = pickArray(cached, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
-      const capSum = rooms.reduce((s, r) => s + toNum(r['* السعة (عدد الطلاب)'] ?? r['السعة (عدد الطلاب)'] ?? r['السعة'] ?? r.capacity), 0);
-      return `• عدد القاعات والأماكن: ${rooms.length} | إجمالي السعة: ${capSum.toLocaleString('en-US')} طالب`;
+    // 3) استفسارات قواعد الكلية
+    if (/قاعد|قواعد|عام اكاديمي|فصل دراسي/i.test(q)) {
+      if (!rules.length) return 'لا توجد قواعد مسجلة في البيانات الحالية.';
+      return rules.slice(0, 10).map(r => {
+        const b = getVal(r, ['البند', 'item', 'title']) || 'بند';
+        const v = getVal(r, ['القيمة', 'value', 'desc']) || '-';
+        return `• ${b}: ${v}`;
+      }).join('\n');
     }
 
-    const matches = [];
-    for (const rec of this.index) {
-      let score = 0;
-      let hitCount = 0;
+    // 4) استفسارات ملاحظات المراجعة
+    if (/ملاحظ|مراجع|تنبيه/i.test(q)) {
+      if (!notes.length) return 'لا توجد ملاحظات مراجعة مسجلة في البيانات الحالية.';
+      return notes.slice(0, 10).map(n => {
+        const t = getVal(n, ['الموضوع', 'topic', 'title']) || 'ملاحظة';
+        const d = getVal(n, ['التفاصيل', 'details', 'note']) || '';
+        return `• ${t}${d ? `: ${d}` : ''}`;
+      }).join('\n');
+    }
 
-      if (qNorm.length >= 2 && rec.fullText.includes(qNorm)) {
-        score += 12;
-      }
+    // 5) استفسارات الفترات الزمنية
+    if (/فتر|وقت|مواعيد|ساع/i.test(q) && !/ماد|مقرر/i.test(q)) {
+      if (!periods.length) return 'لا توجد فترات زمنية مسجلة في البيانات الحالية.';
+      const filtered = periods.filter(p => normAr(Object.values(p).join(' ')).includes(q) || (qStem && normAr(Object.values(p).join(' ')).includes(qStem)));
+      const list = filtered.length ? filtered : periods;
+      return list.slice(0, 10).map(p => {
+        const day = getVal(p, ['أيام الدراسة *', 'أيام الدراسة', 'اليوم', 'day']);
+        const num = getVal(p, ['رقم الفترة *', 'رقم الفترة', 'period']);
+        const st = getVal(p, ['بداية الفترة *', 'بداية الفترة', 'start']);
+        const en = getVal(p, ['نهاية الفترة *', 'نهاية الفترة', 'end']);
+        return `• ${[day, num ? `فترة ${num}` : '', (st || en) ? `${st} - ${en}` : ''].filter(Boolean).join(' | ')}`;
+      }).join('\n');
+    }
 
-      for (const t of searchTerms) {
-        if (rec.fullText.includes(t)) {
-          score += 4;
-          hitCount += 1;
-        } else if (rec.stemmedText.includes(t)) {
-          score += 2.5;
-          hitCount += 1;
+    // 6) استفسارات المواد / الدكاترة / الجداول بالبحث المباشر في الحقول
+    const tokens = q.split(/[\s،,؟?!:؛()\[\]"'\/\\-]+/)
+      .map(normalizeToken)
+      .filter(t => t && (t.length >= 2 || /^\d+$/.test(t)));
+
+    const allItems = [
+      ...courses.map(r => ({ type: 'course', r })),
+      ...faculty.map(r => ({ type: 'faculty', r })),
+      ...groups.map(r => ({ type: 'group', r })),
+      ...schedules.map(r => ({ type: 'schedule', r })),
+    ];
+
+    const hits = allItems
+      .map(entry => {
+        const txt = normAr(Object.values(entry.r).filter(v => v !== undefined && v !== null).join(' '));
+        const stemTxt = txt.split(/\s+/).map(normalizeToken).join(' ');
+        let score = 0;
+        if (txt.includes(q)) score += 10;
+        for (const t of tokens) {
+          if (txt.includes(t) || stemTxt.includes(t)) score += 3;
         }
-      }
+        return { ...entry, score };
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
 
-      if (searchTerms.length > 1 && hitCount === searchTerms.length) {
-        score += 6;
-      }
-
-      if (score > 0) {
-        matches.push({ rec, score, hitCount });
-      }
-    }
-
-    if (!matches.length) {
+    if (!hits.length) {
       return 'لا توجد نتائج مطابقة لسؤالك.';
     }
 
-    matches.sort((a, b) => b.score - a.score || b.hitCount - a.hitCount);
-
-    const lines = [];
-    if (isCount) {
-      const numTotal = matches.reduce((s, m) => s + m.rec.numSum, 0);
-      lines.push(`• العدد: ${matches.length}${numTotal > 0 ? ` | الإجمالي الرقمي: ${numTotal.toLocaleString('en-US')}` : ''}`);
-    }
-
-    for (const m of matches.slice(0, 8)) {
-      lines.push(m.rec.formatted);
-    }
-
-    return lines.join('\n');
+    return hits.map(h => {
+      const r = h.r;
+      if (h.type === 'course') {
+        const subj = getVal(r, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
+        const yr = getVal(r, ['الفرقة *', 'الفرقة', 'yearLevel']);
+        const dept = getVal(r, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']);
+        const doc = getVal(r, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']);
+        const ast = getVal(r, ['المعيدين / السكاشن', 'assistant']);
+        return `• ${subj}${[yr, dept].filter(Boolean).length ? ` (${[yr, dept].filter(Boolean).join(' - ')})` : ''}${doc ? ` | د. ${doc}` : ''}${ast ? ` | معيد: ${ast}` : ''}`;
+      }
+      if (h.type === 'faculty') {
+        const name = getVal(r, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name']) || 'عضو';
+        const role = getVal(r, ['الدرجة الوظيفية *', 'الدرجة الوظيفية', 'role']);
+        const dept = getVal(r, ['القسم *', 'القسم', 'department']);
+        const note = getVal(r, ['ملاحظات', 'notes']);
+        return `• ${name}${role ? ` (${role})` : ''}${dept ? ` - ${dept}` : ''}${note ? ` | ${note}` : ''}`;
+      }
+      const vals = Object.keys(r)
+        .filter(k => !String(k).startsWith('Unnamed') && r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== '' && String(r[k]).trim() !== 'NaN')
+        .slice(0, 5)
+        .map(k => String(r[k]).trim());
+      return `• ${vals.join(' | ')}`;
+    }).join('\n');
   }
 
   mount(parentContainer) {
@@ -394,6 +336,7 @@ export class SheetChatBot {
           </div>
         </div>
         <div class="scb-quick">
+          <button class="scb-qbtn" data-q="الأقسام" type="button">الأقسام</button>
           <button class="scb-qbtn" data-q="قواعد الكلية" type="button">قواعد الكلية</button>
           <button class="scb-qbtn" data-q="ملاحظات المراجعة" type="button">ملاحظات المراجعة</button>
           <button class="scb-qbtn" data-q="الفترات الزمنية" type="button">الفترات الزمنية</button>
@@ -423,15 +366,13 @@ export class SheetChatBot {
       box.scrollTop = box.scrollHeight;
     };
 
-    const ask = async (text) => {
+    const ask = async text => {
       const clean = String(text || '').trim();
       if (!clean) return;
       this.messages.push({ role: 'user', text: clean });
-
-      if (!this.readCachedData()) {
-        await this.fetchFullSheetData(false);
+      if (!this.readData()) {
+        await this.syncData(false);
       }
-
       this.messages.push({ role: 'bot', text: this.answerQuery(clean) });
       renderMessages();
     };
@@ -442,7 +383,7 @@ export class SheetChatBot {
         panel.style.display = this.isOpen ? 'flex' : 'none';
         if (this.isOpen) {
           renderMessages();
-          this.fetchFullSheetData(false);
+          this.syncData(false);
           if (input) input.focus();
         }
       };
@@ -451,7 +392,7 @@ export class SheetChatBot {
     if (syncBtn) {
       syncBtn.onclick = async () => {
         syncBtn.textContent = '...';
-        await this.fetchFullSheetData(true);
+        await this.syncData(true);
         syncBtn.textContent = 'تحديث';
         const last = this.messages[this.messages.length - 1];
         if (!last || last.text !== '• تم تحديث البيانات.') {
@@ -481,8 +422,6 @@ export class SheetChatBot {
       };
     }
 
-    const initialCache = this.readCachedData();
-    if (initialCache) this.ensureIndex(initialCache);
     renderMessages();
   }
 }
