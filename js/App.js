@@ -1,6 +1,4 @@
-// =====================================================================
-//  نظام الجداول — النسخة النهائية المتكاملة (الداش بورد + الأزرار + الإحصائيات + طلبات الدكاترة)
-// =====================================================================
+import { DashboardView } from './DashboardView.js';
 
 const COLS = {
   day:       ['اليوم', 'day'],
@@ -21,7 +19,6 @@ const ROOM_COLS = ['رقم القاعة', '* النوع', 'اسم القاعة',
 
 const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
-// ---------- دوال مساعدة ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const normAr = s => String(s ?? '')
@@ -36,7 +33,7 @@ function getVal(item, keys) {
     for (const k of objKeys) {
       if (k.trim() === pk.trim()) {
         const v = item[k];
-        if (v !== undefined && v !== null && v !== '') return v.toString().trim();
+        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
       }
     }
   }
@@ -47,7 +44,7 @@ function getVal(item, keys) {
       if (lk.includes(lpk)) {
         if (lpk.includes('مادة') && lk.includes('كود')) continue;
         const v = item[k];
-        if (v !== undefined && v !== null && v !== '') return v.toString().trim();
+        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
       }
     }
   }
@@ -59,7 +56,7 @@ const pad = n => String(n).padStart(2, '0');
 const slotLabel = h => `<bdi dir="ltr">${pad(h)}:00–${pad(h + 1)}:00</bdi>`;
 
 function splitNames(s) {
-  return (s || '').split(/[,،]/).map(x => x.trim()).filter(Boolean);
+  return String(s || '').split(/[,،]/).map(x => x.trim()).filter(Boolean);
 }
 
 function yearRank(y) {
@@ -74,7 +71,7 @@ const sortYears = arr => arr.sort((a, b) => yearRank(a) - yearRank(b) || a.local
 
 const sameYear = (a, b) => {
   const x = normAr(a), y = normAr(b);
-  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+  return Boolean(x && y && (x === y || x.includes(y) || y.includes(x)));
 };
 
 function matchesFilter(item, { year, dept, group, instructor, hall }) {
@@ -95,7 +92,6 @@ function matchesFilter(item, { year, dept, group, instructor, hall }) {
   return true;
 }
 
-// ---------- تحميل البيانات ----------
 async function loadData(api, force = false) {
   const cached = localStorage.getItem('sheet_cache_data');
   const cachedTime = Number(localStorage.getItem('sheet_cache_time') || 0);
@@ -119,7 +115,6 @@ async function loadData(api, force = false) {
 }
 const schedulesOf = data => (Array.isArray(data) ? data : (data && data.schedules) || []);
 
-// ---------- الستايل ----------
 function injectStyles() {
   if (document.getElementById('tt-styles')) return;
   const st = document.createElement('style');
@@ -135,6 +130,7 @@ function injectStyles() {
           cursor:pointer;font:inherit;font-weight:600}
   .tt-btn.on{background:var(--ink);color:#fff}
   .tt-note{font-size:.85rem;color:var(--mute);margin:4px 2px 14px}
+  .tt-banner{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.88rem;font-weight:600;color:var(--ok)}
   .tt-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;background:#fff;padding:15px;border-radius:10px;border:1px solid var(--line)}
   .tt-field{display:flex;flex-direction:column;gap:5px}
   .tt-field label{font-weight:600;font-size:0.85rem;color:var(--mute)}
@@ -168,39 +164,15 @@ function injectStyles() {
   .tt-apology{margin-top:6px;background:#fff;border:1px solid #c4cadb;border-radius:6px;padding:3px 12px;
               font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
   .tt-legend{margin:10px 2px 0;font-size:.82rem;color:var(--mute)}
-
-  /* ستايل الداش بورد */
-  .db-hero{background:linear-gradient(135deg,#071b38 0%,#0f3566 100%);color:#fff;border-radius:12px;padding:20px 24px;margin-bottom:14px;border-bottom:4px solid #f59e0b}
-  .db-hero h2{margin:0 0 6px;font-size:1.35rem;font-weight:800}
-  .db-hero p{margin:0;color:#cbd5e1;font-size:.9rem}
-  .db-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
-  .db-kpi{background:#fff;border:1px solid var(--line);border-top:4px solid #2563eb;border-radius:10px;padding:16px;text-align:center}
-  .db-kpi.k2{border-top-color:#10b981}
-  .db-kpi.k3{border-top-color:#f59e0b}
-  .db-kpi.k4{border-top-color:#8b5cf6}
-  .db-kpi-title{font-size:.88rem;font-weight:700;color:#1e293b}
-  .db-kpi-num{font-size:1.85rem;font-weight:800;margin:6px 0;color:#2563eb}
-  .db-kpi.k2 .db-kpi-num{color:#059669}
-  .db-kpi.k3 .db-kpi-num{color:#d97706}
-  .db-kpi.k4 .db-kpi-num{color:#7c3aed}
-  .db-kpi-sub{font-size:.78rem;color:var(--mute);font-weight:600}
-  .db-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:14px}
-  .db-box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
-  .db-box-title{margin:0 0 12px;font-size:.96rem;font-weight:700;color:#0f172a;text-align:center}
-  .db-bar-row{display:grid;grid-template-columns:115px 1fr 36px;align-items:center;gap:8px;margin-bottom:10px;font-size:.83rem}
-  .db-bar-track{height:16px;background:#f1f5f9;border-radius:4px;overflow:hidden}
-  .db-bar-fill{height:100%;background:#3b82f6;border-radius:4px}
-  .db-bar-val{font-weight:700;text-align:left;color:#1e293b}
   `;
   document.head.appendChild(st);
 }
 
-// ---------- رسم الكروت مع تفاصيل القاعة ----------
 function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
   const type = col(item, 'type');
   const doc = col(item, 'doctor');
   const ast = col(item, 'assistant');
-  const isSection = type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (!!ast && !doc);
+  const isSection = type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (Boolean(ast) && !doc);
 
   const subject = col(item, 'subject') || 'مادة';
   const hall = col(item, 'hall');
@@ -246,184 +218,6 @@ function renderGrid(tbody, items, opts = {}) {
 const TABLE_HEAD = `
   <thead><tr><th>الوقت</th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr></thead>`;
 
-// ---------- شاشة الداش بورد ----------
-class DashboardView {
-  constructor(api, onNavigate = null) {
-    this.api = api;
-    this.onNavigate = onNavigate;
-    this.filters = { year: '', dept: '' };
-  }
-
-  async mount(container) {
-    container.innerHTML = `
-      <div class="db-hero">
-        <h2>نظام إدارة الجداول الأكاديمية الذكي</h2>
-        <p>لوحة متابعة المواد الدراسية وأعضاء هيئة التدريس والقاعات</p>
-      </div>
-
-      <div class="tt-filters">
-        <div class="tt-field">
-          <label>الفرقة الدراسية</label>
-          <select id="dbYear" class="tt-sel"><option value="">-- كل الفرق --</option></select>
-        </div>
-        <div class="tt-field">
-          <label>القسم / الشعبة</label>
-          <select id="dbDept" class="tt-sel"><option value="">-- كل الأقسام --</option></select>
-        </div>
-        <div style="display:flex; gap:8px; margin-right:auto;">
-          <button id="dbRefreshBtn" class="tt-btn">تحديث البيانات</button>
-          <button id="dbGoSchedulerBtn" class="tt-btn on">عرض الجدول المفلتر</button>
-        </div>
-      </div>
-
-      <div id="dbLoading" class="tt-loading">جاري تحميل بيانات الداش بورد...</div>
-      <div id="dbContent"></div>
-    `;
-
-    const ySel = document.getElementById('dbYear');
-    if (ySel) ySel.onchange = e => { this.filters.year = e.target.value; this.render(false); };
-
-    const dSel = document.getElementById('dbDept');
-    if (dSel) dSel.onchange = e => { this.filters.dept = e.target.value; this.render(false); };
-
-    const refBtn = document.getElementById('dbRefreshBtn');
-    if (refBtn) refBtn.onclick = () => this.render(true);
-
-    const goBtn = document.getElementById('dbGoSchedulerBtn');
-    if (goBtn) goBtn.onclick = () => {
-      if (typeof this.onNavigate === 'function') this.onNavigate('scheduler');
-    };
-
-    await this.render(false);
-  }
-
-  async render(force = false) {
-    const loading = document.getElementById('dbLoading');
-    const content = document.getElementById('dbContent');
-    if (loading) loading.style.display = 'block';
-
-    let data;
-    try {
-      data = await loadData(this.api, force);
-    } finally {
-      if (loading) loading.style.display = 'none';
-    }
-
-    const schedules = schedulesOf(data);
-    const courses = (data && Array.isArray(data.courses)) ? data.courses : schedules;
-    const rooms = (data && Array.isArray(data.rooms)) ? data.rooms : [];
-    const instructors = (data && Array.isArray(data.instructors)) ? data.instructors : [];
-
-    const years = new Set();
-    const depts = new Set();
-    courses.concat(schedules).forEach(it => {
-      const y = col(it, 'year');
-      const d = col(it, 'dept');
-      if (y) years.add(y);
-      if (d) depts.add(d);
-    });
-
-    const ySel = document.getElementById('dbYear');
-    if (ySel) {
-      const yList = sortYears([...years]);
-      ySel.innerHTML = '<option value="">-- كل الفرق --</option>';
-      yList.forEach(y => ySel.appendChild(new Option(y, y)));
-      if (this.filters.year && yList.includes(this.filters.year)) ySel.value = this.filters.year;
-      else { ySel.value = ''; this.filters.year = ''; }
-    }
-
-    const dSel = document.getElementById('dbDept');
-    if (dSel) {
-      const dList = [...depts].sort((a, b) => a.localeCompare(b, 'ar'));
-      dSel.innerHTML = '<option value="">-- كل الأقسام --</option>';
-      dList.forEach(d => dSel.appendChild(new Option(d, d)));
-      if (this.filters.dept && dList.includes(this.filters.dept)) dSel.value = this.filters.dept;
-      else { dSel.value = ''; this.filters.dept = ''; }
-    }
-
-    const filteredCourses = courses.filter(it => matchesFilter(it, { year: this.filters.year, dept: this.filters.dept }));
-    const filteredSchedules = schedules.filter(it => matchesFilter(it, { year: this.filters.year, dept: this.filters.dept }));
-
-    const uniqueSubjects = new Set(filteredCourses.map(c => col(c, 'subject')).filter(Boolean));
-    const totalCourses = uniqueSubjects.size || filteredCourses.length;
-
-    const instNames = new Set();
-    instructors.forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) instNames.add(n); });
-    filteredSchedules.forEach(it => {
-      splitNames(col(it, 'doctor')).forEach(n => instNames.add(n));
-      splitNames(col(it, 'assistant')).forEach(n => instNames.add(n));
-    });
-
-    const totalCapacity = rooms.reduce((sum, r) => {
-      const raw = getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity']);
-      const n = parseFloat(normAr(raw).replace(/[^\d.-]/g, ''));
-      return sum + (Number.isFinite(n) ? n : 0);
-    }, 0);
-
-    const byYearMap = new Map();
-    const byDeptMap = new Map();
-    filteredCourses.forEach(c => {
-      const y = col(c, 'year') || 'غير محدد';
-      const d = col(c, 'dept') || 'عام';
-      byYearMap.set(y, (byYearMap.get(y) || 0) + 1);
-      byDeptMap.set(d, (byDeptMap.get(d) || 0) + 1);
-    });
-
-    const renderBars = map => {
-      const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
-      if (!entries.length) return '<div class="tt-note">لا توجد بيانات متاحة.</div>';
-      const max = Math.max(...entries.map(e => e[1]), 1);
-      return entries.map(([lbl, val]) => {
-        const pct = Math.max(5, Math.round((val / max) * 100));
-        return `
-          <div class="db-bar-row">
-            <span>${esc(lbl)}</span>
-            <div class="db-bar-track"><div class="db-bar-fill" style="width:${pct}%"></div></div>
-            <span class="db-bar-val">${val}</span>
-          </div>`;
-      }).join('');
-    };
-
-    if (!content) return;
-    content.innerHTML = `
-      <div class="db-kpis">
-        <div class="db-kpi">
-          <div class="db-kpi-title">إجمالي المواد الدراسية</div>
-          <div class="db-kpi-num">${totalCourses}</div>
-          <div class="db-kpi-sub">مادة (${filteredSchedules.length} حصة بالجدول)</div>
-        </div>
-        <div class="db-kpi k2">
-          <div class="db-kpi-title">أعضاء هيئة التدريس والمعيدون</div>
-          <div class="db-kpi-num">${instNames.size}</div>
-          <div class="db-kpi-sub">دكتور ومعيد</div>
-        </div>
-        <div class="db-kpi k3">
-          <div class="db-kpi-title">القاعات والمدرجات والمعامل</div>
-          <div class="db-kpi-num">${rooms.length}</div>
-          <div class="db-kpi-sub">مكان للتدريس</div>
-        </div>
-        <div class="db-kpi k4">
-          <div class="db-kpi-title">السعة الإجمالية للقاعات</div>
-          <div class="db-kpi-num">${totalCapacity.toLocaleString('en-US')}</div>
-          <div class="db-kpi-sub">طالب</div>
-        </div>
-      </div>
-
-      <div class="db-grid">
-        <div class="db-box">
-          <h3 class="db-box-title">عدد المواد حسب الفرقة الدراسية</h3>
-          ${renderBars(byYearMap)}
-        </div>
-        <div class="db-box">
-          <h3 class="db-box-title">عدد المواد حسب القسم / الشعبة</h3>
-          ${renderBars(byDeptMap)}
-        </div>
-      </div>
-    `;
-  }
-}
-
-// ---------- شاشة منسق الجداول ----------
 class SchedulerView {
   constructor(api) {
     this.api = api;
@@ -461,7 +255,6 @@ class SchedulerView {
         </div>
       </div>
 
-      <!-- إحصائيات الجدول -->
       <div class="tt-stats">
         <div class="tt-stat-item">
           <div><div id="statDistributed" class="tt-stat-num">0</div><div class="tt-stat-lbl">حصص أتوزعت</div></div>
@@ -477,7 +270,6 @@ class SchedulerView {
         </div>
       </div>
 
-      <!-- قسم طلبات الدكاترة -->
       <div id="requestsContainer" class="tt-requests-box" style="display:none">
         <div id="requestsTitle" class="tt-requests-title">طلبات الدكاترة</div>
         <div id="requestsList"></div>
@@ -517,7 +309,7 @@ class SchedulerView {
     let data;
     try { data = await loadData(this.api, force); } finally { if (loading) loading.style.display = 'none'; }
     this.schedules = schedulesOf(data);
-    this.requests = data.requests || [];
+    this.requests = (data && data.requests) || [];
 
     const years = new Set();
     const depts = new Set();
@@ -535,11 +327,11 @@ class SchedulerView {
     if (data && data.groups && Array.isArray(data.groups)) {
       data.groups.forEach(g => {
         const y = g['الفرقة'] || g.year;
-        const d = g['الشعبة'] || g['القسم'] || g.dept;
+        const d = g['الشعبة'] || g['القسم'] || g['البرنامج / الشعبة'] || g.dept;
         const grp = g['المجموعة'] || g.group;
-        if (y) years.add(y.toString().trim());
-        if (d) depts.add(d.toString().trim());
-        if (grp) groups.add(grp.toString().trim());
+        if (y) years.add(String(y).trim());
+        if (d) depts.add(String(d).trim());
+        if (grp) groups.add(String(grp).trim());
       });
     }
 
@@ -564,10 +356,10 @@ class SchedulerView {
     });
 
     this.populateSelect('selYear', sortYears([...years]), this.filters.year, '-- كل الفرق --');
-    this.populateSelect('selDept', [...depts].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.dept, '-- كل الأقسام --');
-    this.populateSelect('selGroup', [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.group, '-- كل المجموعات --');
-    this.populateSelect('selInstructor', [...instructors].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.instructor, '-- كل الدكاترة --');
-    this.populateSelect('selHall', [...halls].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.hall, '-- كل القاعات --');
+    this.populateSelect('selDept', [...depts].sort((a, b) => a.localeCompare(b, 'ar')), this.filters.dept, '-- كل الأقسام --');
+    this.populateSelect('selGroup', [...groups].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true })), this.filters.group, '-- كل المجموعات --');
+    this.populateSelect('selInstructor', [...instructors].sort((a, b) => a.localeCompare(b, 'ar')), this.filters.instructor, '-- كل الدكاترة --');
+    this.populateSelect('selHall', [...halls].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true })), this.filters.hall, '-- كل القاعات --');
 
     const statDist = document.getElementById('statDistributed');
     if (statDist) statDist.textContent = this.schedules.length;
@@ -580,7 +372,7 @@ class SchedulerView {
     const box = document.getElementById('requestsContainer');
     const listEl = document.getElementById('requestsList');
     const titleEl = document.getElementById('requestsTitle');
-    if (!box || !listEl) return;
+    if (!box || !listEl || !titleEl) return;
 
     if (!this.requests || this.requests.length === 0) {
       box.style.display = 'none';
@@ -601,7 +393,7 @@ class SchedulerView {
         <div class="tt-request-card">
           <div>
             <b>${esc(docName)}</b> يطلب ${esc(details)} - السبب: ${esc(reason)}
-            <div style="font-size:0.8rem; color:${status==='تمت الموافقة'?'#10b981':'#d97706'}">الحالة: ${esc(status)}</div>
+            <div style="font-size:0.8rem; color:${status === 'تمت الموافقة' ? '#10b981' : '#d97706'}">الحالة: ${esc(status)}</div>
           </div>
           <div style="display:flex; gap:6px;">
             <button class="tt-req-action-btn tt-btn-approve" data-idx="${idx}">موافقة</button>
@@ -613,7 +405,7 @@ class SchedulerView {
 
     listEl.querySelectorAll('.tt-btn-approve').forEach(btn => {
       btn.onclick = async e => {
-        const idx = e.currentTarget.dataset.idx;
+        const idx = Number(e.currentTarget.dataset.idx);
         this.requests[idx].status = 'تمت الموافقة';
         alert('تمت الموافقة على الطلب بنجاح!');
         this.renderRequests();
@@ -622,7 +414,7 @@ class SchedulerView {
 
     listEl.querySelectorAll('.tt-btn-reject').forEach(btn => {
       btn.onclick = async e => {
-        const idx = e.currentTarget.dataset.idx;
+        const idx = Number(e.currentTarget.dataset.idx);
         this.requests[idx].status = 'مرفوض';
         alert('تم رفض الطلب.');
         this.renderRequests();
@@ -654,7 +446,6 @@ class SchedulerView {
   }
 }
 
-// ---------- شاشة الدكتور / المعيد ----------
 class DoctorView {
   constructor(api) {
     this.api = api;
@@ -693,7 +484,7 @@ class DoctorView {
   async refresh(force = false) {
     const data = await loadData(this.api, force);
     this.schedules = schedulesOf(data);
-    this.requests = data.requests || [];
+    this.requests = (data && data.requests) || [];
 
     const inst = new Set();
     if (data && data.instructors && Array.isArray(data.instructors)) {
@@ -738,12 +529,14 @@ class DoctorView {
       btn.onclick = async e => {
         const subj = e.currentTarget.dataset.subject;
         if (!confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) return;
-        await this.api.sendAction({
-          action: 'addRequest',
-          doctorName: this.selected,
-          details: `اعتذار عن مادة ${subj}`,
-          reason: this.reason,
-        });
+        if (this.api && typeof this.api.sendAction === 'function') {
+          await this.api.sendAction({
+            action: 'addRequest',
+            doctorName: this.selected,
+            details: `اعتذار عن مادة ${subj}`,
+            reason: this.reason,
+          });
+        }
         alert('تم إرسال طلب الاعتذار للمنسق بنجاح!');
         localStorage.removeItem('sheet_cache_data');
         await this.refresh(true);
@@ -752,7 +545,6 @@ class DoctorView {
   }
 }
 
-// ---------- شاشة الطالب ----------
 class StudentView {
   constructor(api) {
     this.api = api;
@@ -800,8 +592,8 @@ class StudentView {
     const groups = new Set();
     if (data && data.groups && Array.isArray(data.groups)) {
       data.groups.forEach(g => {
-        if (g['الفرقة']) years.add(g['الفرقة'].toString().trim());
-        if (g['المجموعة']) groups.add(g['المجموعة'].toString().trim());
+        if (g['الفرقة']) years.add(String(g['الفرقة']).trim());
+        if (g['المجموعة']) groups.add(String(g['المجموعة']).trim());
       });
     }
     this.schedules.forEach(it => {
@@ -812,7 +604,7 @@ class StudentView {
     });
 
     const yList = sortYears([...years]);
-    const gList = [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}));
+    const gList = [...groups].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
 
     const ySel = document.getElementById('stYear');
     if (ySel) {
@@ -833,7 +625,7 @@ class StudentView {
     this.build();
   }
 
- build() {
+  build() {
     const tbody = document.getElementById('stBody');
     if (!tbody) return;
     const items = this.schedules.filter(it => matchesFilter(it, { year: this.year, group: this.group }));
@@ -841,7 +633,6 @@ class StudentView {
   }
 }
 
-// ---------- التطبيق الرئيسي ----------
 export class App {
   constructor(container, api) {
     this.container = container;
@@ -873,7 +664,7 @@ export class App {
     const navStudent = document.getElementById('navStudent');
     if (navStudent) navStudent.onclick = () => this.switchView('student');
 
-    this.switchView('dashboard');
+    await this.switchView('dashboard');
   }
 
   async switchView(name) {
