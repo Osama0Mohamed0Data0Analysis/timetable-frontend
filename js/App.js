@@ -1,4 +1,6 @@
-import { DashboardView } from './DashboardView.js';
+// =====================================================================
+//  نظام الجداول — النسخة النهائية المتكاملة (الداش بورد + الأزرار + الإحصائيات + طلبات الدكاترة)
+// =====================================================================
 
 const COLS = {
   day:       ['اليوم', 'day'],
@@ -18,7 +20,10 @@ const INSTRUCTOR_COLS = ['اسم الدكتور / المعيد *', 'اسم ال�
 const ROOM_COLS = ['رقم القاعة', '* النوع', 'اسم القاعة', 'hall', 'room'];
 
 const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+const DEFAULT_FIRST_HOUR = 9;
+const DEFAULT_LAST_HOUR = 14;
 
+// ---------- دوال مساعدة ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const normAr = s => String(s ?? '')
@@ -51,6 +56,24 @@ function getVal(item, keys) {
   return '';
 }
 const col = (item, name) => getVal(item, COLS[name]);
+
+function parseHour(v) {
+  if (v === undefined || v === null) return null;
+  const s = normAr(v);
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d) ? null : Math.round(d.getHours() + d.getMinutes() / 60);
+  }
+  const m = s.match(/(\d{1,2})(?::(\d{2}))?\s*(ص|م|am|pm)?/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const suf = (m[3] || '').toLowerCase();
+  if ((suf === 'م' || suf === 'pm') && h < 12) h += 12;
+  else if ((suf === 'ص' || suf === 'am') && h === 12) h = 0;
+  else if (!suf && h < 8) h += 12;
+  return h;
+}
 
 const pad = n => String(n).padStart(2, '0');
 const slotLabel = h => `<bdi dir="ltr">${pad(h)}:00–${pad(h + 1)}:00</bdi>`;
@@ -92,6 +115,7 @@ function matchesFilter(item, { year, dept, group, instructor, hall }) {
   return true;
 }
 
+// ---------- تحميل البيانات ----------
 async function loadData(api, force = false) {
   const cached = localStorage.getItem('sheet_cache_data');
   const cachedTime = Number(localStorage.getItem('sheet_cache_time') || 0);
@@ -115,6 +139,7 @@ async function loadData(api, force = false) {
 }
 const schedulesOf = data => (Array.isArray(data) ? data : (data && data.schedules) || []);
 
+// ---------- الستايل ----------
 function injectStyles() {
   if (document.getElementById('tt-styles')) return;
   const st = document.createElement('style');
@@ -163,182 +188,22 @@ function injectStyles() {
   .tt-apology{margin-top:6px;background:#fff;border:1px solid #c4cadb;border-radius:6px;padding:3px 12px;
               font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
   .tt-legend{margin:10px 2px 0;font-size:.82rem;color:var(--mute)}
-  `;
-  document.head.appendChild(st);
-}
 
-function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
-  const type = col(item, 'type');
-  const doc = col(item, 'doctor');
-  const ast = col(item, 'assistant');
-  const isSection = type ? /سكشن|عملي|معمل|section|lab/i.test(type) : (!!ast && !doc);
-
-  const subject = col(item, 'subject') || 'مادة';
-  const hall = col(item, 'hall');
-  const building = col(item, 'building');
-  const floor = col(item, 'floor');
-
-  const person = isSection ? (ast || doc) : (doc || ast);
-  const label = isSection ? 'سكشن' : 'محاضرة';
-  const yl = col(item, 'year');
-  const dept = col(item, 'dept');
-  const grp = col(item, 'group');
-
-  let hallDetails = hall ? `قاعة: ${hall}` : '';
-  if (building) hallDetails += ` (${building}`;
-  if (floor) hallDetails += building ? `, ${floor})` : `(${floor})`;
-  else if (building) hallDetails += `)`;
-
-  return `
-    <div class="tt-card ${isSection ? 'sec' : ''}">
-      <div class="tt-subj">${esc(subject)}</div>
-      <div class="tt-meta">${label}${hallDetails ? ' · ' + esc(hallDetails) : ''}</div>
-      ${person ? `<div class="tt-meta">${esc(person)}</div>` : ''}
-      ${showYear && yl ? `<div class="tt-meta">${esc(yl)}${grp ? ' - مجموعة ' + esc(grp) : (dept ? ' - ' + esc(dept) : '')}</div>` : ''}
-      ${doctorExtra ? doctorExtra(item, subject) : ''}
-    </div>`;
-}
-
-function renderGrid(tbody, items, opts = {}) {
-  const slots = [9, 10, 11, 12, 13, 14];
-  let simpleHtml = '';
-  slots.forEach((h, slotIdx) => {
-    simpleHtml += `<tr><td class="tt-time">${slotLabel(h)}</td>`;
-    DAYS.forEach((day, dayIdx) => {
-      const idx = slotIdx * DAYS.length + dayIdx;
-      const it = items[idx];
-      simpleHtml += `<td>${it ? cardHtml(it, opts) : ''}</td>`;
-    });
-    simpleHtml += '</tr>';
-  });
-  tbody.innerHTML = simpleHtml;
-}
-
-const TABLE_HEAD = `
-  <thead><tr><th>الوقت</th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr></thead>`;
-
-class SchedulerView {
-  constructor(api) {
-    this.api = api;
-    this.schedules = [];
-    this.requests = [];
-    this.filters = { year: '', dept: '', group: '', instructor: '', hall: '' };
-  }
-
-  async mount(container) {
-    container.innerHTML = `
-      <div class="tt-filters">
-        <div class="tt-field">
-          <label>الفرقة الدراسية</label>
-          <select id="selYear" class="tt-sel"><option value="">-- كل الفرق --</option></select>
-        </div>
-        <div class="tt-field">
-          <label>القسم / الشعبة</label>
-          <select id="selDept" class="tt-sel"><option value="">-- كل الأقسام --</option></select>
-        </div>
-        <div class="tt-field">
-          <label>المجموعة</label>
-          <select id="selGroup" class="tt-sel"><option value="">-- كل المجموعات --</option></select>
-        </div>
-        <div class="tt-field">
-          <label>الدكتور / المعيد</label>
-          <select id="selInstructor" class="tt-sel"><option value="">-- كل الدكاترة --</option></select>
-        </div>
-        <div class="tt-field">
-          <label>القاعة / المدرج</label>
-          <select id="selHall" class="tt-sel"><option value="">-- كل القاعات --</option></select>
-        </div>
-        <div style="display:flex; gap:8px; margin-right:auto;">
-          <button id="btnRefresh" class="tt-btn">تحديث</button>
-          <button id="btnGenerate" class="tt-btn on">توليد الجدول</button>
-        </div>
-      </div>
-
-      <div class="tt-stats">
-        <div class="tt-stat-item">
-          <div><div id="statDistributed" class="tt-stat-num">0</div><div class="tt-stat-lbl">حصص أتوزعت</div></div>
-        </div>
-        <div class="tt-stat-item">
-          <div><div class="tt-stat-num" style="color:#10b981">0</div><div class="tt-stat-lbl">تعارضات</div></div>
-        </div>
-        <div class="tt-stat-item">
-          <div><div class="tt-stat-num" style="color:#d97706">0</div><div class="tt-stat-lbl">فجوات الطلاب</div></div>
-        </div>
-        <div class="tt-stat-item" style="border-left:none">
-          <div><div id="statAttempts" class="tt-stat-num">1</div><div class="tt-stat-lbl">محاولات</div></div>
-        </div>
-      </div>
-
-      <div id="requestsContainer" class="tt-requests-box" style="display:none">
-        <div id="requestsTitle" class="tt-requests-title">طلبات الدكاترة</div>
-        <div id="requestsList"></div>
-      </div>
-
-      <div id="schLoading" class="tt-loading">جاري تحديث البيانات من Google Sheets...</div>
-      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="schBody"></tbody></table></div>
-      <div class="tt-legend">الأزرق = محاضرة، البرتقالي = سكشن.</div>`;
-
-    const btnRefresh = document.getElementById('btnRefresh');
-    if (btnRefresh) btnRefresh.onclick = () => this.refresh(true);
-
-    const btnGenerate = document.getElementById('btnGenerate');
-    if (btnGenerate) btnGenerate.onclick = () => { alert('تم تحديث وتوليد الجدول بنجاح.'); this.build(); };
-
-    const selYear = document.getElementById('selYear');
-    if (selYear) selYear.onchange = e => { this.filters.year = e.target.value; this.build(); };
-
-    const selDept = document.getElementById('selDept');
-    if (selDept) selDept.onchange = e => { this.filters.dept = e.target.value; this.build(); };
-
-    const selGroup = document.getElementById('selGroup');
-    if (selGroup) selGroup.onchange = e => { this.filters.group = e.target.value; this.build(); };
-
-    const selInstructor = document.getElementById('selInstructor');
-    if (selInstructor) selInstructor.onchange = e => { this.filters.instructor = e.target.value; this.build(); };
-
-    const selHall = document.getElementById('selHall');
-    if (selHall) selHall.onchange = e => { this.filters.hall = e.target.value; this.build(); };
-
-    await this.refresh(false);
-  }
-
-  async refresh(force) {
-    const loading = document.getElementById('schLoading');
-    if (loading) loading.style.display = 'block';
-    let data;
-    try { data = await loadData(this.api, force); } finally { if (loading) loading.style.display = 'none'; }
-    this.schedules = schedulesOf(data);
-    this.requests = data.requests || [];
-
-    const years = new Set();
-    const depts = new Set();
-    const groups = new Set();
-    const instructors = new Set();
-    const halls = new Set();
-
-    if (data && data.rooms && Array.isArray(data.rooms)) {
-      data.rooms.forEach(r => {
-        const h = getVal(r, ROOM_COLS);
-        if (h) halls.add(h);
-      });
-    }
-
-    if (data && data.groups && Array.isArray(data.groups)) {
-      data.groups.forEach(g => {
-        const y = g['الفرقة'] || g.year;
-        const d = g['الشعبة'] || g['القسم'] || g.dept;
-        const grp = g['المجموعة'] || g.group;
-        if (y) years.add(y.toString().trim());
-        if (d) depts.add(d.toString().trim());
-        if (grp) groups.add(grp.toString().trim());
-      });
-    }
-
-    if (data && data.instructors && Array.isArray(data.instructors)) {
-      data.instructors.forEach(i => {
-        const n = getVal(i, INSTRUCTOR_COLS);
-        if (n) instructors.add(n);
-      });
-    }
-
-    this.schedules.forEach(it =>
+  /* ستايل الداش بورد */
+  .db-hero{background:linear-gradient(135deg,#071b38 0%,#0f3566 100%);color:#fff;border-radius:12px;padding:20px 24px;margin-bottom:14px;border-bottom:4px solid #f59e0b}
+  .db-hero h2{margin:0 0 6px;font-size:1.35rem;font-weight:800}
+  .db-hero p{margin:0;color:#cbd5e1;font-size:.9rem}
+  .db-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
+  .db-kpi{background:#fff;border:1px solid var(--line);border-top:4px solid #2563eb;border-radius:10px;padding:16px;text-align:center}
+  .db-kpi.k2{border-top-color:#10b981}
+  .db-kpi.k3{border-top-color:#f59e0b}
+  .db-kpi.k4{border-top-color:#8b5cf6}
+  .db-kpi-title{font-size:.88rem;font-weight:700;color:#1e293b}
+  .db-kpi-num{font-size:1.85rem;font-weight:800;margin:6px 0;color:#2563eb}
+  .db-kpi.k2 .db-kpi-num{color:#059669}
+  .db-kpi.k3 .db-kpi-num{color:#d97706}
+  .db-kpi.k4 .db-kpi-num{color:#7c3aed}
+  .db-kpi-sub{font-size:.78rem;color:var(--mute);font-weight:600}
+  .db-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:14px}
+  .db-box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+  .db-box-title{margin:0 0 12px;font-size:.96rem;font-weight:70
