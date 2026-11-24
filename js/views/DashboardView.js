@@ -103,27 +103,7 @@ function hBarChartHtml(entries, filterGroup) {
 function vBarChartHtml(entries, filterGroup) {
   if (!entries.length) return '<div class="db-empty">لا توجد بيانات مطابقة.</div>';
   const maxVal = Math.max(...entries.map(e => e.value), 1);
-  return `<div class="db-vbars">${entries.map(({ label, value }) => {
-    const hPct = Math.max(8, Math.round((value / maxVal) * 100));
-    return `
-      <div class="db-vbar-col db-click-item" data-group="${esc(filterGroup)}" data-label="${esc(label)}" title="${esc(label)}: ${value}">
-        <span class="db-vbar-cnt">${value}</span>
-        <div class="db-vbar-rect" style="height:${hPct}%"></div>
-        <span class="db-vbar-lbl">${esc(label)}</span>
-      </div>`;
-  }).join('')}</div>`;
-}
-
-function donutChartHtml(entries, filterGroup) {
-  if (!entries.length) return '<div class="db-empty">لا توجد بيانات قاعات.</div>';
-  const total = entries.reduce((acc, e) => acc + e.value, 0) || 1;
-  let cum = 0;
-  const stops = entries.map((e, i) => {
-    const color = CHART_COLORS[i % CHART_COLORS.length];
-    const start = (cum / total) * 360;
-    cum += e.value;
-    const end = (cum / total) * 360;
-    return `${color} ${start.toFixed(1)}deg ${end.toFixed(1)}deg`;
+  return `<div class="db-vbars">${entries.map(({ label, value }) => { const hPct = Math.max(8, Math.round((value / maxVal) * 100)); return ` <div class="db-vbar-col db-click-item" data-group="${esc(filterGroup)}" data-label="${esc(label)}" title="${esc(label)}: ${value}"> <span class="db-vbar-cnt">${value}</span> <div class="db-vbar-rect" style="height:${hPct}\%"></div> <span class="db-vbar-lbl">${esc(label)}</span> </div>`; }).join('')}</div>`; }  function donutChartHtml(entries, filterGroup) { if (!entries.length) return '<div class="db-empty">لا توجد بيانات قاعات.</div>'; const total = entries.reduce((acc, e) => acc + e.value, 0) \vert{}\vert{} 1; let cum = 0; const stops = entries.map((e, i) => { const color = CHART_COLORS[i \% CHART_COLORS.length]; const start = (cum / total) * 360; cum += e.value; const end = (cum / total) * 360; return `${color} ${start.toFixed(1)}deg${end.toFixed(1)}deg`;
   });
 
   const legend = entries.map((e, i) => {
@@ -132,7 +112,7 @@ function donutChartHtml(entries, filterGroup) {
     return `
       <div class="db-leg-item db-click-item" data-group="${esc(filterGroup)}" data-label="${esc(e.label)}">
         <span class="db-dot" style="background:${color}"></span>
-        <span><b>${esc(e.label)}</b> (${e.value} · ${pct}%)</span>
+        <span><b>${esc(e.label)}</b> (${e.value} ·${pct}%)</span>
       </div>`;
   }).join('');
 
@@ -399,11 +379,10 @@ export class DashboardView {
     if (this.inspection) {
       const { group, label } = this.inspection;
       let chips = [];
-      if (group === 'courses') chips = [...uniqueSubjects].slice(0, 30).map(s => `مادة: ${s}`);
-      else if (group === 'faculty') chips = [...facultyNames].slice(0, 30).map(n => `عضو: ${n}`);
-      else if (group === 'rooms') chips = allRooms.slice(0, 30).map(r => `${getVal(r, ROOM_COLS) || 'مكان'} (${toNum(getVal(r, ROOM_CAP_COLS))} طالب)`);
-      else if (group === 'capacity') chips = allRooms.slice(0, 25).map(r => `${getVal(r, ROOM_COLS) || 'قاعة'}: ${toNum(getVal(r, ROOM_CAP_COLS))} طالب`);
-      else if (group === 'roomType') chips = allRooms.filter(r => (getVal(r, ROOM_TYPE_COLS) || 'غير محدد') === label).slice(0, 30).map(r => `${getVal(r, ROOM_COLS) || 'قاعة'} (${toNum(getVal(r, ROOM_CAP_COLS))} طالب)`);
+      if (group === 'courses') chips = [...uniqueSubjects].slice(0, 30).map(s => `مادة: ${s}`); else if (group === 'faculty') chips = [...facultyNames].slice(0, 30).map(n => `عضو: ${n}`);
+      else if (group === 'rooms') chips = allRooms.slice(0, 30).map(r => `${getVal(r, ROOM_COLS) \vert{}\vert{} 'مكان'} (${toNum(getVal(r, ROOM_CAP_COLS))} طالب)`);
+      else if (group === 'capacity') chips = allRooms.slice(0, 25).map(r => `${getVal(r, ROOM_COLS) \vert{}\vert{} 'قاعة'}: ${toNum(getVal(r, ROOM_CAP_COLS))} طالب`);
+      else if (group === 'roomType') chips = allRooms.filter(r => (getVal(r, ROOM_TYPE_COLS) || 'غير محدد') === label).slice(0, 30).map(r => `${getVal(r, ROOM_COLS) \vert{}\vert{} 'قاعة'} (${toNum(getVal(r, ROOM_CAP_COLS))} طالب)`);
       else if (group === 'facultyRole') chips = allFaculty.filter(f => (getVal(f, FACULTY_ROLE_COLS) || 'غير محدد') === label).slice(0, 30).map(f => getVal(f, INSTRUCTOR_COLS) || 'عضو');
       else if (group === 'courseYear') chips = courseSource.filter(c => (getVal(c, ['الفرقة *', 'الفرقة', 'yearLevel']) || 'غير محدد') === label).slice(0, 30).map(c => getVal(c, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة');
       else if (group === 'facultyDept') chips = allFaculty.filter(f => (getVal(f, FACULTY_DEPT_COLS) || 'غير محدد') === label).slice(0, 30).map(f => getVal(f, INSTRUCTOR_COLS) || 'عضو');
@@ -470,22 +449,3 @@ export class DashboardView {
         </div>
         <div class="db-card">
           <h3 class="db-card-title">Courses by Department</h3>
-          ${vBarChartHtml(deptCourseEntries, 'courseDept')}
-        </div>
-      </div>`;
-
-    const closeBtn = document.getElementById('dbCloseInsp');
-    if (closeBtn) closeBtn.onclick = () => { this.inspection = null; this.render(false); };
-
-    body.querySelectorAll('.db-click-item').forEach(el => {
-      el.onclick = () => {
-        const grp = el.dataset.group;
-        const lbl = el.dataset.label;
-        this.inspection = (this.inspection && this.inspection.group === grp && this.inspection.label === lbl)
-          ? null
-          : { group: grp, label: lbl };
-        this.render(false);
-      };
-    });
-  }
-}
