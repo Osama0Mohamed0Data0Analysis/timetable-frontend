@@ -262,7 +262,7 @@ export class DashboardView {
     const y = getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
     const d = getVal(item, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']);
     if (this.filters.year && !sameYear(y, this.filters.year)) return false;
-    if (this.filters.dept && !normAr(d).includes(normAr(this.filters.dept))) return false;
+    if (this.filters.dept && normAr(d).indexOf(normAr(this.filters.dept)) === -1) return false;
     return true;
   }
 
@@ -370,4 +370,195 @@ export class DashboardView {
     }
     if (dSel) {
       dSel.innerHTML = '<option value="">-- كل الأقسام --</option>';
-      dList.forEach(function (
+      dList.forEach(function (d) { dSel.appendChild(new Option(d, d)); });
+      dSel.value = this.filters.dept && dList.indexOf(this.filters.dept) !== -1 ? this.filters.dept : '';
+    }
+  }
+
+  async render(force) {
+    const self = this;
+    const loading = document.getElementById('dbLoading');
+    const body = document.getElementById('dbBody');
+    if (loading) loading.style.display = 'block';
+
+    let data;
+    try {
+      data = await this.fetchSheetData(force);
+    } finally {
+      if (loading) loading.style.display = 'none';
+    }
+
+    this.populateFilters(data);
+
+    const schedules = Array.isArray(data) ? data : pickArray(data, ['schedules', 'schedule', 'الجداول']);
+    const allCourses = pickArray(data, ['courses', 'subjects', 'المواد', 'المواد الدراسية']);
+    const allRooms = pickArray(data, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
+    const allFaculty = pickArray(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
+
+    const filteredCourses = allCourses.filter(function (c) { return self.matchItem(c); });
+    const filteredSchedules = schedules.filter(function (s) { return self.matchItem(s); });
+    const filteredFaculty = allFaculty.filter(function (f) {
+      if (!self.filters.dept) return true;
+      return normAr(getVal(f, FACULTY_DEPT_COLS)).indexOf(normAr(self.filters.dept)) !== -1;
+    });
+
+    const courseSource = filteredCourses.length ? filteredCourses : filteredSchedules;
+    const uniqueSubjects = new Set(
+      courseSource
+        .map(function (c) { return getVal(c, ['اسم المادة *', 'اسم المادة', 'subject']); })
+        .filter(Boolean)
+    );
+    const totalCourses = filteredCourses.length || uniqueSubjects.size;
+
+    const facultyNames = new Set();
+    filteredFaculty.forEach(function (f) {
+      const n = getVal(f, INSTRUCTOR_COLS);
+      if (n) facultyNames.add(n);
+    });
+    if (!filteredFaculty.length) {
+      filteredSchedules.forEach(function (s) {
+        splitNames(getVal(s, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'])).forEach(function (n) { facultyNames.add(n); });
+        splitNames(getVal(s, ['المعيدين / السكاشن', 'assistant'])).forEach(function (n) { facultyNames.add(n); });
+      });
+    }
+    const totalFaculty = filteredFaculty.length || facultyNames.size;
+
+    let totalCapacity = 0;
+    const roomTypes = new Map();
+    allRooms.forEach(function (r) {
+      totalCapacity += toNum(getVal(r, ROOM_CAP_COLS));
+      const rt = getVal(r, ROOM_TYPE_COLS) || 'غير محدد';
+      roomTypes.set(rt, (roomTypes.get(rt) || 0) + 1);
+    });
+
+    const coursesByYear = new Map();
+    const coursesByDept = new Map();
+    courseSource.forEach(function (item) {
+      const y = getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']) || 'غير محدد';
+      const d = getVal(item, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || 'عام';
+      coursesByYear.set(y, (coursesByYear.get(y) || 0) + 1);
+      coursesByDept.set(d, (coursesByDept.get(d) || 0) + 1);
+    });
+
+    const facultyByDept = new Map();
+    const facultyByRole = new Map();
+    filteredFaculty.forEach(function (f) {
+      const fd = getVal(f, FACULTY_DEPT_COLS) || 'غير محدد';
+      const fr = getVal(f, FACULTY_ROLE_COLS) || 'غير محدد';
+      facultyByDept.set(fd, (facultyByDept.get(fd) || 0) + 1);
+      facultyByRole.set(fr, (facultyByRole.get(fr) || 0) + 1);
+    });
+
+    const yearEntries = countMapEntries(coursesByYear, function (a, b) {
+      return yearRank(b.label) - yearRank(a.label);
+    });
+    const deptCourseEntries = countMapEntries(coursesByDept);
+    const roomTypeEntries = countMapEntries(roomTypes);
+    const facultyDeptEntries = countMapEntries(facultyByDept);
+    const facultyRoleEntries = countMapEntries(facultyByRole);
+
+    let inspectorHtml = '';
+    if (this.inspection) {
+      const group = this.inspection.group;
+      const label = this.inspection.label;
+      let chips = [];
+      if (group === 'courses') {
+        chips = Array.from(uniqueSubjects).slice(0, 30).map(function (s) { return 'مادة: ' + s; });
+      } else if (group === 'faculty') {
+        chips = Array.from(facultyNames).slice(0, 30).map(function (n) { return 'عضو: ' + n; });
+      } else if (group === 'rooms') {
+        chips = allRooms.slice(0, 30).map(function (r) {
+          return (getVal(r, ROOM_COLS) || 'مكان') + ' (' + toNum(getVal(r, ROOM_CAP_COLS)) + ' طالب)';
+        });
+      } else if (group === 'capacity') {
+        chips = allRooms.slice(0, 25).map(function (r) {
+          return (getVal(r, ROOM_COLS) || 'قاعة') + ': ' + toNum(getVal(r, ROOM_CAP_COLS)) + ' طالب';
+        });
+      } else if (group === 'roomType') {
+        chips = allRooms.filter(function (r) { return (getVal(r, ROOM_TYPE_COLS) || 'غير محدد') === label; }).slice(0, 30).map(function (r) {
+          return (getVal(r, ROOM_COLS) || 'قاعة') + ' (' + toNum(getVal(r, ROOM_CAP_COLS)) + ' طالب)';
+        });
+      } else if (group === 'facultyRole') {
+        chips = allFaculty.filter(function (f) { return (getVal(f, FACULTY_ROLE_COLS) || 'غير محدد') === label; }).slice(0, 30).map(function (f) {
+          return getVal(f, INSTRUCTOR_COLS) || 'عضو';
+        });
+      } else if (group === 'courseYear') {
+        chips = courseSource.filter(function (c) { return (getVal(c, ['الفرقة *', 'الفرقة', 'yearLevel']) || 'غير محدد') === label; }).slice(0, 30).map(function (c) {
+          return getVal(c, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
+        });
+      } else if (group === 'facultyDept') {
+        chips = allFaculty.filter(function (f) { return (getVal(f, FACULTY_DEPT_COLS) || 'غير محدد') === label; }).slice(0, 30).map(function (f) {
+          return getVal(f, INSTRUCTOR_COLS) || 'عضو';
+        });
+      } else if (group === 'courseDept') {
+        chips = courseSource.filter(function (c) { return (getVal(c, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || 'عام') === label; }).slice(0, 30).map(function (c) {
+          return getVal(c, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
+        });
+      }
+
+      inspectorHtml =
+        '<div class="db-inspector">' +
+        '<div class="db-inspector-head">' +
+        '<h4 class="db-inspector-title">تفاصيل التحديد: ' + esc(label) + ' (' + chips.length + ')</h4>' +
+        '<button id="dbCloseInsp" class="db-btn" style="padding:4px 12px;font-size:.8rem">إغلاق</button>' +
+        '</div>' +
+        '<div class="db-chip-list">' +
+        (chips.length ? chips.map(function (ch) { return '<span class="db-chip">' + esc(ch) + '</span>'; }).join('') : '<span class="db-empty">لا توجد تفاصيل.</span>') +
+        '</div></div>';
+    }
+
+    if (!body) return;
+    body.innerHTML =
+      '<div class="db-kpis">' +
+      '<div class="db-kpi db-click-item" data-group="courses" data-label="إجمالي المواد الدراسية">' +
+      '<div class="db-kpi-lbl">إجمالي المواد الدراسية</div>' +
+      '<div class="db-kpi-val">' + totalCourses + '</div>' +
+      '<div class="db-kpi-sub">مادة مسجلة (' + filteredSchedules.length + ' حصة بالجدول)</div>' +
+      '</div>' +
+      '<div class="db-kpi g2 db-click-item" data-group="faculty" data-label="أعضاء هيئة التدريس والمعيدون">' +
+      '<div class="db-kpi-lbl">أعضاء هيئة التدريس والمعيدون</div>' +
+      '<div class="db-kpi-val">' + totalFaculty + '</div>' +
+      '<div class="db-kpi-sub">دكتور ومعيد</div>' +
+      '</div>' +
+      '<div class="db-kpi g3 db-click-item" data-group="rooms" data-label="القاعات والمدرجات والمعامل">' +
+      '<div class="db-kpi-lbl">القاعات والمدرجات والمعامل</div>' +
+      '<div class="db-kpi-val">' + allRooms.length + '</div>' +
+      '<div class="db-kpi-sub">مكان للتدريس</div>' +
+      '</div>' +
+      '<div class="db-kpi g4 db-click-item" data-group="capacity" data-label="السعة الإجمالية للقاعات">' +
+      '<div class="db-kpi-lbl">السعة الإجمالية للقاعات</div>' +
+      '<div class="db-kpi-val">' + totalCapacity.toLocaleString('en-US') + '</div>' +
+      '<div class="db-kpi-sub">طالب</div>' +
+      '</div>' +
+      '</div>' +
+      inspectorHtml +
+      '<div class="db-grid-3">' +
+      '<div class="db-card"><h3 class="db-card-title">Room Distribution</h3>' + donutChartHtml(roomTypeEntries, 'roomType') + '</div>' +
+      '<div class="db-card"><h3 class="db-card-title">Faculty Distribution by Job Title</h3>' + hBarChartHtml(facultyRoleEntries, 'facultyRole') + '</div>' +
+      '<div class="db-card"><h3 class="db-card-title">Number of Courses by Academic Year.</h3>' + hBarChartHtml(yearEntries, 'courseYear') + '</div>' +
+      '</div>' +
+      '<div class="db-grid-2">' +
+      '<div class="db-card"><h3 class="db-card-title">Faculty Members by Department</h3>' + hBarChartHtml(facultyDeptEntries, 'facultyDept') + '</div>' +
+      '<div class="db-card"><h3 class="db-card-title">Courses by Department</h3>' + vBarChartHtml(deptCourseEntries, 'courseDept') + '</div>' +
+      '</div>';
+
+    const closeBtn = document.getElementById('dbCloseInsp');
+    if (closeBtn) {
+      closeBtn.onclick = function () {
+        self.inspection = null;
+        self.render(false);
+      };
+    }
+
+    body.querySelectorAll('.db-click-item').forEach(function (el) {
+      el.onclick = function () {
+        const grp = el.dataset.group;
+        const lbl = el.dataset.label;
+        self.inspection = (self.inspection && self.inspection.group === grp && self.inspection.label === lbl)
+          ? null
+          : { group: grp, label: lbl };
+        self.render(false);
+      };
+    });
+  }
+}
