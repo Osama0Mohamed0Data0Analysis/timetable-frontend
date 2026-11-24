@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — النسخة النهائية المتكاملة (الأزرار الخمسة + الإحصائيات + طلبات الدكاترة)
+//  نظام الجداول — الخطوة 1: إضافة صفحة الداش بورد (DashboardView)
 // =====================================================================
 
 const COLS = {
@@ -15,13 +15,18 @@ const COLS = {
   year:      ['الفرقة *', 'الفرقة', 'yearLevel'],
   group:     ['المجموعة', 'group'],
   dept:      ['الشعبة / القسم', 'القسم', 'department'],
+  lecHours:  ['ساعات المحاضرة أسبوعياً *', 'ساعات المحاضرة', 'lectureHours'],
+  secHours:  ['ساعات السكشن أسبوعياً', 'ساعات السكشن', 'sectionHours'],
 };
 const INSTRUCTOR_COLS = ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name'];
+const FACULTY_ROLE_COLS = ['الدرجة الوظيفية *', 'الدرجة الوظيفية', 'role', 'title'];
+const FACULTY_DEPT_COLS = ['القسم *', 'القسم', 'department'];
 const ROOM_COLS = ['رقم القاعة', '* النوع', 'اسم القاعة', 'hall', 'room'];
+const ROOM_TYPE_COLS = ['* النوع', 'النوع', 'type'];
+const ROOM_CAP_COLS = ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity'];
+const ROOM_BLDG_COLS = ['* المبنى', 'المبنى', 'building'];
 
 const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
-const DEFAULT_FIRST_HOUR = 9;
-const DEFAULT_LAST_HOUR = 14;
 
 // ---------- دوال مساعدة ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -57,22 +62,11 @@ function getVal(item, keys) {
 }
 const col = (item, name) => getVal(item, COLS[name]);
 
-function parseHour(v) {
-  if (v === undefined || v === null) return null;
-  const s = normAr(v);
-  if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
-    const d = new Date(s);
-    return isNaN(d) ? null : Math.round(d.getHours() + d.getMinutes() / 60);
-  }
-  const m = s.match(/(\d{1,2})(?::(\d{2}))?\s*(ص|م|am|pm)?/i);
-  if (!m) return null;
-  let h = parseInt(m[1], 10);
-  const suf = (m[3] || '').toLowerCase();
-  if ((suf === 'م' || suf === 'pm') && h < 12) h += 12;
-  else if ((suf === 'ص' || suf === 'am') && h === 12) h = 0;
-  else if (!suf && h < 8) h += 12;
-  return h;
+function toNum(v) {
+  if (v === undefined || v === null) return 0;
+  const cleaned = normAr(v).replace(/[^\d.-]/g, '');
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
 }
 
 const pad = n => String(n).padStart(2, '0');
@@ -110,12 +104,12 @@ function matchesFilter(item, { year, dept, group, instructor, hall }) {
   }
   if (hall) {
     const rowHall = col(item, 'hall');
-    if (rowHall && !normAr(rowHall).includes(normAr(hall))) return false;
+    if (rowHall && normAr(rowHall) && !normAr(rowHall).includes(normAr(hall))) return false;
   }
   return true;
 }
 
-// ---------- تحميل البيانات ----------
+// ---------- تحميل البيانات مع الكاش ----------
 async function loadData(api, force = false) {
   const cached = localStorage.getItem('sheet_cache_data');
   const cachedTime = Number(localStorage.getItem('sheet_cache_time') || 0);
@@ -138,6 +132,9 @@ async function loadData(api, force = false) {
   }
 }
 const schedulesOf = data => (Array.isArray(data) ? data : (data && data.schedules) || []);
+const coursesOf = data => (data && Array.isArray(data.courses) ? data.courses : []);
+const roomsOf = data => (data && Array.isArray(data.rooms) ? data.rooms : []);
+const instructorsOf = data => (data && Array.isArray(data.instructors) ? data.instructors : []);
 
 // ---------- الستايل ----------
 function injectStyles() {
@@ -146,13 +143,14 @@ function injectStyles() {
   st.id = 'tt-styles';
   st.textContent = `
   .tt{--bg:#f1f3f8;--ink:#1b2236;--mute:#6b7287;--line:#dfe3ee;--head:#f3f4f9;
-      --lec-bg:#e4e9f9;--lec-bd:#1e3a8a;--sec-bg:#fce8d5;--sec-bd:#b4600c;--ok:#15803d;
+      --lec-bg:#e4e9f9;--lec-bd:#1e3a8a;--sec-bg:#fce8d5;--sec-bd:#b4600c;--ok:#15803d;--accent:#1e3a8a;
       direction:rtl;text-align:right;background:var(--bg);color:var(--ink);min-height:100vh;padding:14px;
       font-family:'IBM Plex Sans Arabic','Readex Pro',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif}
   .tt *{box-sizing:border-box}
-  .tt-nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .tt-nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
   .tt-btn{background:#fff;color:var(--ink);border:1.5px solid var(--ink);padding:8px 16px;border-radius:8px;
-          cursor:pointer;font:inherit;font-weight:600}
+          cursor:pointer;font:inherit;font-weight:600;transition:.15s}
+  .tt-btn:hover{background:#f8fafc}
   .tt-btn.on{background:var(--ink);color:#fff}
   .tt-note{font-size:.85rem;color:var(--mute);margin:4px 2px 14px}
   .tt-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;background:#fff;padding:15px;border-radius:10px;border:1px solid var(--line)}
@@ -161,6 +159,34 @@ function injectStyles() {
   .tt-sel{min-width:150px;padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff;
           font:inherit;color:var(--ink);cursor:pointer;font-size:0.9rem}
   .tt-loading{text-align:center;color:#0284c7;font-weight:700;padding:12px;display:none}
+
+  /* Dashboard Styles */
+  .db-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:14px}
+  .db-title{margin:0;font-size:1.2rem;font-weight:800;color:var(--ink)}
+  .db-sub{margin:4px 0 0;font-size:.86rem;color:var(--mute)}
+  .db-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
+  .db-kpi{background:#fff;border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:10px;padding:16px}
+  .db-kpi.sec{border-top-color:#b4600c}
+  .db-kpi.ok{border-top-color:#15803d}
+  .db-kpi.warn{border-top-color:#d97706}
+  .db-kpi-lbl{font-size:.84rem;color:var(--mute);font-weight:600}
+  .db-kpi-val{font-size:1.75rem;font-weight:800;color:var(--ink);margin:6px 0 2px}
+  .db-kpi-sub{font-size:.78rem;color:var(--mute)}
+  .db-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;margin-bottom:14px}
+  .db-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+  .db-card-title{font-size:.98rem;font-weight:700;margin:0 0 12px;color:var(--ink);display:flex;justify-content:space-between;align-items:center}
+  .db-bar-row{margin-bottom:10px}
+  .db-bar-row:last-child{margin-bottom:0}
+  .db-bar-top{display:flex;justify-content:space-between;font-size:.84rem;margin-bottom:4px;gap:8px}
+  .db-bar-name{font-weight:600;color:var(--ink)}
+  .db-bar-cnt{font-weight:700;color:var(--mute)}
+  .db-track{height:8px;background:#eef1f7;border-radius:999px;overflow:hidden}
+  .db-fill{height:100%;background:var(--accent);border-radius:999px;transition:width .25s ease}
+  .db-fill.sec{background:#d97706}
+  .db-fill.ok{background:#15803d}
+  .db-alert-list{margin:0;padding:0 18px 0 0;font-size:.85rem;line-height:1.7}
+  .db-empty{font-size:.85rem;color:var(--mute)}
+
   .tt-stats{display:flex;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px;justify-content:space-around;text-align:center;flex-wrap:wrap;gap:12px}
   .tt-stat-item{display:flex;align-items:center;gap:15px;border-left:2px solid var(--line);padding-left:30px}
   .tt-stat-item:last-child{border-left:none;padding-left:0}
@@ -192,7 +218,7 @@ function injectStyles() {
   document.head.appendChild(st);
 }
 
-// ---------- رسم الكروت مع تفاصيل القاعة ----------
+// ---------- رسم الكروت ----------
 function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
   const type = col(item, 'type');
   const doc = col(item, 'doctor');
@@ -203,7 +229,7 @@ function cardHtml(item, { showYear = false, doctorExtra = null } = {}) {
   const hall = col(item, 'hall');
   const building = col(item, 'building');
   const floor = col(item, 'floor');
-  
+
   const person = isSection ? (ast || doc) : (doc || ast);
   const label = isSection ? 'سكشن' : 'محاضرة';
   const yl = col(item, 'year');
@@ -243,6 +269,213 @@ function renderGrid(tbody, items, opts = {}) {
 const TABLE_HEAD = `
   <thead><tr><th>الوقت</th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr></thead>`;
 
+// ---------- دوال مساعدة للداش بورد ----------
+function countMapEntries(map, sortFn = null) {
+  const arr = [...map.entries()].map(([label, value]) => ({ label, value }));
+  if (sortFn) return arr.sort(sortFn);
+  return arr.sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'ar'));
+}
+
+function barChartHtml(entries, variant = '') {
+  if (!entries || !entries.length) {
+    return '<div class="db-empty">لا توجد بيانات متاحة لهذا التوزيع في الشيت حالياً.</div>';
+  }
+  const maxVal = Math.max(...entries.map(e => e.value), 1);
+  return entries.map(({ label, value }) => {
+    const pct = Math.max(4, Math.round((value / maxVal) * 100));
+    return `
+      <div class="db-bar-row">
+        <div class="db-bar-top">
+          <span class="db-bar-name">${esc(label)}</span>
+          <span class="db-bar-cnt">${value}</span>
+        </div>
+        <div class="db-track">
+          <div class="db-fill ${variant}" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ---------- شاشة الداش بورد ----------
+class DashboardView {
+  constructor(api) {
+    this.api = api;
+  }
+
+  async mount(container) {
+    container.innerHTML = `
+      <div class="db-header">
+        <div>
+          <h2 class="db-title">لوحة متابعة المواد الدراسية وأعضاء هيئة التدريس والقاعات</h2>
+          <p class="db-sub">مؤشرات وتوزيعات حية مستخرجة من بيانات Google Sheets</p>
+        </div>
+        <button id="dbRefreshBtn" class="tt-btn">تحديث بيانات الداش بورد</button>
+      </div>
+      <div id="dbLoading" class="tt-loading">جاري تحليل بيانات الداش بورد...</div>
+      <div id="dbContent"></div>`;
+
+    const btn = document.getElementById('dbRefreshBtn');
+    if (btn) btn.onclick = () => this.render(true);
+
+    await this.render(false);
+  }
+
+  async render(force = false) {
+    const loading = document.getElementById('dbLoading');
+    const content = document.getElementById('dbContent');
+    if (loading) loading.style.display = 'block';
+
+    let data;
+    try {
+      data = await loadData(this.api, force);
+    } finally {
+      if (loading) loading.style.display = 'none';
+    }
+
+    const schedules = schedulesOf(data);
+    const courses = coursesOf(data);
+    const rooms = roomsOf(data);
+    const faculty = instructorsOf(data);
+    const requests = Array.isArray(data && data.requests) ? data.requests : [];
+
+    // 1. إجمالي المواد (من تبويب المواد إن وجد، وإلا استنتاج المواد الفريدة من الجداول)
+    const courseSource = courses.length ? courses : schedules;
+    const uniqueSubjects = new Set(courseSource.map(c => col(c, 'subject')).filter(Boolean));
+    const totalCourses = courses.length || uniqueSubjects.size;
+
+    // 2. أعضاء هيئة التدريس والمعيدون
+    const facultyNames = new Set();
+    faculty.forEach(f => {
+      const n = getVal(f, INSTRUCTOR_COLS);
+      if (n) facultyNames.add(n);
+    });
+    schedules.forEach(s => {
+      splitNames(col(s, 'doctor')).forEach(n => facultyNames.add(n));
+      splitNames(col(s, 'assistant')).forEach(n => facultyNames.add(n));
+    });
+    const totalFaculty = faculty.length || facultyNames.size;
+
+    // 3. القاعات والسعة الإجمالية
+    let totalCapacity = 0;
+    const roomTypes = new Map();
+    const roomBuildings = new Map();
+    rooms.forEach(r => {
+      totalCapacity += toNum(getVal(r, ROOM_CAP_COLS));
+      const rt = getVal(r, ROOM_TYPE_COLS) || 'غير محدد';
+      roomTypes.set(rt, (roomTypes.get(rt) || 0) + 1);
+      const rb = getVal(r, ROOM_BLDG_COLS);
+      if (rb) roomBuildings.set(rb, (roomBuildings.get(rb) || 0) + 1);
+    });
+    const totalRooms = rooms.length;
+
+    // 4. الساعات الأسبوعية والطلبات
+    let totalLecHours = 0;
+    let totalSecHours = 0;
+    const missingStaffCourses = [];
+    courses.forEach(c => {
+      const lh = toNum(col(c, 'lecHours'));
+      const sh = toNum(col(c, 'secHours'));
+      totalLecHours += lh;
+      totalSecHours += sh;
+      const subj = col(c, 'subject') || 'مادة بدون اسم';
+      const hasDoc = !!col(c, 'doctor');
+      const hasSec = sh > 0;
+      const hasAst = !!col(c, 'assistant');
+      if (!hasDoc || (hasSec && !hasAst)) {
+        missingStaffCourses.push(subj);
+      }
+    });
+
+    const pendingRequests = requests.filter(r => (r.status || r['الحالة'] || 'قيد المراجعة') === 'قيد المراجعة').length;
+
+    // 5. توزيع المواد حسب الفرقة والقسم
+    const coursesByYear = new Map();
+    const coursesByDept = new Map();
+    courseSource.forEach(item => {
+      const y = col(item, 'year') || 'غير محدد';
+      const d = col(item, 'dept') || 'عام / غير محدد';
+      coursesByYear.set(y, (coursesByYear.get(y) || 0) + 1);
+      coursesByDept.set(d, (coursesByDept.get(d) || 0) + 1);
+    });
+
+    // 6. توزيع أعضاء هيئة التدريس حسب القسم والدرجة الوظيفية
+    const facultyByDept = new Map();
+    const facultyByRole = new Map();
+    faculty.forEach(f => {
+      const fd = getVal(f, FACULTY_DEPT_COLS) || 'غير محدد';
+      const fr = getVal(f, FACULTY_ROLE_COLS) || 'غير محدد';
+      facultyByDept.set(fd, (facultyByDept.get(fd) || 0) + 1);
+      facultyByRole.set(fr, (facultyByRole.get(fr) || 0) + 1);
+    });
+
+    const yearEntries = countMapEntries(coursesByYear, (a, b) => yearRank(a.label) - yearRank(b.label));
+    const deptCourseEntries = countMapEntries(coursesByDept);
+    const roomTypeEntries = countMapEntries(roomTypes);
+    const facultyDeptEntries = countMapEntries(facultyByDept);
+    const facultyRoleEntries = countMapEntries(facultyByRole);
+
+    if (!content) return;
+    content.innerHTML = `
+      <div class="db-kpis">
+        <div class="db-kpi">
+          <div class="db-kpi-lbl">إجمالي المواد الدراسية</div>
+          <div class="db-kpi-val">${totalCourses}</div>
+          <div class="db-kpi-sub">مادة مسجلة (${totalLecHours} س محاضرة · ${totalSecHours} س سكشن)</div>
+        </div>
+        <div class="db-kpi ok">
+          <div class="db-kpi-lbl">أعضاء هيئة التدريس والمعيدون</div>
+          <div class="db-kpi-val">${totalFaculty}</div>
+          <div class="db-kpi-sub">دكتور، أستاذ، ومعيد / مدرس مساعد</div>
+        </div>
+        <div class="db-kpi sec">
+          <div class="db-kpi-lbl">القاعات والمدرجات والمعامل</div>
+          <div class="db-kpi-val">${totalRooms}</div>
+          <div class="db-kpi-sub">${roomBuildings.size ? 'عبر ' + roomBuildings.size + ' مبنى' : 'مكان تدريس مسجل'}</div>
+        </div>
+        <div class="db-kpi warn">
+          <div class="db-kpi-lbl">السعة الإجمالية للقاعات</div>
+          <div class="db-kpi-val">${totalCapacity.toLocaleString('ar-EG')}</div>
+          <div class="db-kpi-sub">طالب · طلبات معلقة: ${pendingRequests}</div>
+        </div>
+      </div>
+
+      <div class="db-grid">
+        <div class="db-card">
+          <h3 class="db-card-title">عدد المواد حسب الفرقة الدراسية</h3>
+          ${barChartHtml(yearEntries, '')}
+        </div>
+        <div class="db-card">
+          <h3 class="db-card-title">عدد المواد حسب القسم / الشعبة</h3>
+          ${barChartHtml(deptCourseEntries, 'ok')}
+        </div>
+      </div>
+
+      <div class="db-grid">
+        <div class="db-card">
+          <h3 class="db-card-title">توزيع القاعات حسب النوع</h3>
+          ${barChartHtml(roomTypeEntries, 'sec')}
+        </div>
+        <div class="db-card">
+          <h3 class="db-card-title">توزيع أعضاء هيئة التدريس حسب الدرجة الوظيفية</h3>
+          ${barChartHtml(facultyRoleEntries, '')}
+        </div>
+      </div>
+
+      <div class="db-grid">
+        <div class="db-card">
+          <h3 class="db-card-title">أعضاء هيئة التدريس حسب القسم</h3>
+          ${barChartHtml(facultyDeptEntries, 'ok')}
+        </div>
+        <div class="db-card">
+          <h3 class="db-card-title">تنبيهات المتابعة واستكمال البيانات</h3>
+          ${missingStaffCourses.length
+            ? `<ul class="db-alert-list">${missingStaffCourses.slice(0, 8).map(m => `<li>مادة تحتاج استكمال عضو هيئة تدريس/معاونة: <b>${esc(m)}</b></li>`).join('')}</ul>`
+            : `<div class="db-empty">جميع المواد المسجلة مكتملة من حيث أعضاء هيئة التدريس والسكاشن، أو لم يتم إرجاع تبويب المواد التفصيلي بعد.</div>`}
+        </div>
+      </div>`;
+  }
+}
+
 // ---------- شاشة منسق الجداول ----------
 class SchedulerView {
   constructor(api) {
@@ -281,7 +514,6 @@ class SchedulerView {
         </div>
       </div>
 
-      <!-- إحصائيات الجدول -->
       <div class="tt-stats">
         <div class="tt-stat-item">
           <div><div id="statDistributed" class="tt-stat-num">0</div><div class="tt-stat-lbl">حصص أتوزعت</div></div>
@@ -297,7 +529,6 @@ class SchedulerView {
         </div>
       </div>
 
-      <!-- قسم طلبات الدكاترة -->
       <div id="requestsContainer" class="tt-requests-box" style="display:none">
         <div id="requestsTitle" class="tt-requests-title">طلبات الدكاترة</div>
         <div id="requestsList"></div>
@@ -312,7 +543,7 @@ class SchedulerView {
 
     const btnGenerate = document.getElementById('btnGenerate');
     if (btnGenerate) btnGenerate.onclick = () => { alert('تم تحديث وتوليد الجدول بنجاح.'); this.build(); };
-    
+
     const selYear = document.getElementById('selYear');
     if (selYear) selYear.onchange = e => { this.filters.year = e.target.value; this.build(); };
 
@@ -389,7 +620,6 @@ class SchedulerView {
     this.populateSelect('selInstructor', [...instructors].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.instructor, '-- كل الدكاترة --');
     this.populateSelect('selHall', [...halls].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.hall, '-- كل القاعات --');
 
-    // تحديث الإحصائيات وطلبات الدكاترة
     const statDist = document.getElementById('statDistributed');
     if (statDist) statDist.textContent = this.schedules.length;
 
@@ -410,7 +640,7 @@ class SchedulerView {
 
     box.style.display = 'block';
     titleEl.textContent = `طلبات الدكاترة (${this.requests.length} جديد)`;
-    
+
     let html = '';
     this.requests.forEach((req, idx) => {
       const docName = req.doctorName || req['اسم الدكتور'] || 'دكتور';
@@ -674,12 +904,16 @@ export class App {
     this.container.innerHTML = `
       <div class="tt">
         <div class="tt-nav">
+          <button id="navDashboard" class="tt-btn">الداش بورد</button>
           <button id="navScheduler" class="tt-btn">1) منسق الجداول</button>
           <button id="navDoctor" class="tt-btn">2) دكتور / معيد</button>
           <button id="navStudent" class="tt-btn">3) طالب</button>
         </div>
         <div id="viewContainer"></div>
       </div>`;
+
+    const navDashboard = document.getElementById('navDashboard');
+    if (navDashboard) navDashboard.onclick = () => this.switchView('dashboard');
 
     const navScheduler = document.getElementById('navScheduler');
     if (navScheduler) navScheduler.onclick = () => this.switchView('scheduler');
@@ -690,11 +924,16 @@ export class App {
     const navStudent = document.getElementById('navStudent');
     if (navStudent) navStudent.onclick = () => this.switchView('student');
 
-    this.switchView('scheduler');
+    this.switchView('dashboard');
   }
 
   async switchView(name) {
-    const btns = { scheduler: 'navScheduler', doctor: 'navDoctor', student: 'navStudent' };
+    const btns = {
+      dashboard: 'navDashboard',
+      scheduler: 'navScheduler',
+      doctor: 'navDoctor',
+      student: 'navStudent',
+    };
     Object.entries(btns).forEach(([k, id]) => {
       const b = document.getElementById(id);
       if (b) b.classList.toggle('on', k === name);
@@ -704,8 +943,14 @@ export class App {
     if (vc) {
       vc.innerHTML = '<div class="tt-loading" style="display:block">جاري التحميل...</div>';
 
-      const views = { scheduler: SchedulerView, doctor: DoctorView, student: StudentView };
-      const view = new views[name](this.api);
+      const views = {
+        dashboard: DashboardView,
+        scheduler: SchedulerView,
+        doctor: DoctorView,
+        student: StudentView,
+      };
+      const ViewClass = views[name] || DashboardView;
+      const view = new ViewClass(this.api);
       await view.mount(vc);
     }
   }
