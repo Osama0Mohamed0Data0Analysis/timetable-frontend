@@ -6,41 +6,48 @@ const ROOM_TYPE_COLS = ['* النوع', 'النوع', 'type'];
 const ROOM_CAP_COLS = ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity'];
 const CHART_COLORS = ['#1e3a8a', '#2563eb', '#0284c7', '#0d9488', '#15803d', '#d97706', '#b4600c', '#4f46e5', '#64748b'];
 
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;'
-}[c]));
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
-const normAr = s => String(s ?? '')
-  .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-  .replace(/[أإآ]/g, 'ا')
-  .replace(/ى/g, 'ي')
-  .replace(/ة/g, 'ه')
-  .replace(/\s+/g, ' ')
-  .trim();
+function normAr(s) {
+  return String(s ?? '')
+    .replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)); })
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function getVal(item, keys) {
   if (!item) return '';
   const objKeys = Object.keys(item);
-  for (const pk of keys) {
-    for (const k of objKeys) {
+  for (let i = 0; i < keys.length; i++) {
+    const pk = keys[i];
+    for (let j = 0; j < objKeys.length; j++) {
+      const k = objKeys[j];
       if (k.trim() === pk.trim()) {
         const v = item[k];
-        if (v !== undefined && v !== null && v !== '') return v.toString().trim();
+        if (v !== undefined && v !== null && v !== '') return String(v).trim();
       }
     }
   }
-  for (const pk of keys) {
-    for (const k of objKeys) {
+  for (let i = 0; i < keys.length; i++) {
+    const pk = keys[i];
+    for (let j = 0; j < objKeys.length; j++) {
+      const k = objKeys[j];
       const lk = k.toLowerCase().trim();
       const lpk = pk.toLowerCase().trim();
-      if (lk.includes(lpk)) {
-        if (lpk.includes('مادة') && lk.includes('كود')) continue;
+      if (lk.indexOf(lpk) !== -1) {
+        if (lpk.indexOf('مادة') !== -1 && lk.indexOf('كود') !== -1) continue;
         const v = item[k];
-        if (v !== undefined && v !== null && v !== '') return v.toString().trim();
+        if (v !== undefined && v !== null && v !== '') return String(v).trim();
       }
     }
   }
@@ -55,80 +62,95 @@ function toNum(v) {
 }
 
 function splitNames(s) {
-  return (s || '').split(/[,،]/).map(x => x.trim()).filter(Boolean);
+  return String(s || '')
+    .split(/[,،]/)
+    .map(function (x) { return x.trim(); })
+    .filter(Boolean);
 }
 
 function yearRank(y) {
   const n = normAr(y);
   const order = ['اول', 'ثان', 'ثالث', 'رابع', 'خامس'];
-  const i = order.findIndex(o => n.includes(o));
+  const i = order.findIndex(function (o) { return n.indexOf(o) !== -1; });
   if (i >= 0) return i;
   const d = n.match(/\d+/);
   return d ? parseInt(d[0], 10) - 1 : 99;
 }
 
-const sortYears = arr => arr.sort((a, b) => yearRank(a) - yearRank(b) || a.localeCompare(b, 'ar'));
+function sortYears(arr) {
+  return arr.sort(function (a, b) {
+    return yearRank(a) - yearRank(b) || a.localeCompare(b, 'ar');
+  });
+}
 
-const sameYear = (a, b) => {
+function sameYear(a, b) {
   const x = normAr(a);
   const y = normAr(b);
-  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
-};
+  return Boolean(x && y && (x === y || x.indexOf(y) !== -1 || y.indexOf(x) !== -1));
+}
 
 function pickArray(data, candidates) {
   if (!data || typeof data !== 'object') return [];
-  for (const key of candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    const key = candidates[i];
     if (Array.isArray(data[key])) return data[key];
   }
   if (data.data && typeof data.data === 'object') {
-    for (const key of candidates) {
+    for (let i = 0; i < candidates.length; i++) {
+      const key = candidates[i];
       if (Array.isArray(data.data[key])) return data.data[key];
     }
   }
   return [];
 }
 
-function countMapEntries(map, sortFn = null) {
-  const arr = [...map.entries()].map(([label, value]) => ({ label, value }));
+function countMapEntries(map, sortFn) {
+  const arr = Array.from(map.entries()).map(function (entry) {
+    return { label: entry[0], value: entry[1] };
+  });
   if (sortFn) return arr.sort(sortFn);
-  return arr.sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'ar'));
+  return arr.sort(function (a, b) {
+    return b.value - a.value || a.label.localeCompare(b.label, 'ar');
+  });
 }
 
 function hBarChartHtml(entries, filterGroup) {
   if (!entries.length) return '<div class="db-empty">لا توجد بيانات مطابقة.</div>';
-  const maxVal = Math.max(...entries.map(e => e.value), 1);
-  return '<div class="db-hbars">' + entries.map(({ label, value }) => {
-    const pct = Math.max(4, Math.round((value / maxVal) * 100));
+  const maxVal = Math.max.apply(null, entries.map(function (e) { return e.value; }).concat([1]));
+  const rows = entries.map(function (item) {
+    const pct = Math.max(4, Math.round((item.value / maxVal) * 100));
     return (
-      '<div class="db-hbar db-click-item" data-group="' + esc(filterGroup) + '" data-label="' + esc(label) + '">' +
-      '<span class="db-hbar-lbl" title="' + esc(label) + '">' + esc(label) + '</span>' +
+      '<div class="db-hbar db-click-item" data-group="' + esc(filterGroup) + '" data-label="' + esc(item.label) + '">' +
+      '<span class="db-hbar-lbl" title="' + esc(item.label) + '">' + esc(item.label) + '</span>' +
       '<div class="db-hbar-track"><div class="db-hbar-fill" style="width:' + pct + '%"></div></div>' +
-      '<span class="db-hbar-val">' + value + '</span>' +
+      '<span class="db-hbar-val">' + item.value + '</span>' +
       '</div>'
     );
-  }).join('') + '</div>';
+  }).join('');
+  return '<div class="db-hbars">' + rows + '</div>';
 }
 
 function vBarChartHtml(entries, filterGroup) {
   if (!entries.length) return '<div class="db-empty">لا توجد بيانات مطابقة.</div>';
-  const maxVal = Math.max(...entries.map(e => e.value), 1);
-  return '<div class="db-vbars">' + entries.map(({ label, value }) => {
-    const hPct = Math.max(8, Math.round((value / maxVal) * 100));
+  const maxVal = Math.max.apply(null, entries.map(function (e) { return e.value; }).concat([1]));
+  const cols = entries.map(function (item) {
+    const hPct = Math.max(8, Math.round((item.value / maxVal) * 100));
     return (
-      '<div class="db-vbar-col db-click-item" data-group="' + esc(filterGroup) + '" data-label="' + esc(label) + '" title="' + esc(label) + ': ' + value + '">' +
-      '<span class="db-vbar-cnt">' + value + '</span>' +
+      '<div class="db-vbar-col db-click-item" data-group="' + esc(filterGroup) + '" data-label="' + esc(item.label) + '" title="' + esc(item.label) + ': ' + item.value + '">' +
+      '<span class="db-vbar-cnt">' + item.value + '</span>' +
       '<div class="db-vbar-rect" style="height:' + hPct + '%"></div>' +
-      '<span class="db-vbar-lbl">' + esc(label) + '</span>' +
+      '<span class="db-vbar-lbl">' + esc(item.label) + '</span>' +
       '</div>'
     );
-  }).join('') + '</div>';
+  }).join('');
+  return '<div class="db-vbars">' + cols + '</div>';
 }
 
 function donutChartHtml(entries, filterGroup) {
   if (!entries.length) return '<div class="db-empty">لا توجد بيانات قاعات.</div>';
-  const total = entries.reduce((acc, e) => acc + e.value, 0) || 1;
+  const total = entries.reduce(function (acc, e) { return acc + e.value; }, 0) || 1;
   let cum = 0;
-  const stops = entries.map((e, i) => {
+  const stops = entries.map(function (e, i) {
     const color = CHART_COLORS[i % CHART_COLORS.length];
     const start = (cum / total) * 360;
     cum += e.value;
@@ -136,7 +158,7 @@ function donutChartHtml(entries, filterGroup) {
     return color + ' ' + start.toFixed(1) + 'deg ' + end.toFixed(1) + 'deg';
   });
 
-  const legend = entries.map((e, i) => {
+  const legend = entries.map(function (e, i) {
     const color = CHART_COLORS[i % CHART_COLORS.length];
     const pct = Math.round((e.value / total) * 100);
     return (
@@ -159,9 +181,9 @@ function donutChartHtml(entries, filterGroup) {
 }
 
 export class DashboardView {
-  constructor(api, onNavigate = null) {
+  constructor(api, onNavigate) {
     this.api = api;
-    this.onNavigate = onNavigate;
+    this.onNavigate = onNavigate || null;
     this.filters = { year: '', dept: '' };
     this.inspection = null;
   }
@@ -210,4 +232,155 @@ export class DashboardView {
       '.db-inspector-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}',
       '.db-inspector-title{margin:0;font-size:1rem;font-weight:700;color:#1e3a8a}',
       '.db-chip-list{display:flex;flex-wrap:wrap;gap:8px}',
-      '.db-chip{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:8px;padding:6px 10px;font-size:.82rem;
+      '.db-chip{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:8px;padding:6px 10px;font-size:.82rem;font-weight:600}',
+      '.db-empty{font-size:.85rem;color:#64748b;text-align:center;padding:12px}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+
+  async fetchSheetData(force) {
+    const shouldForce = Boolean(force);
+    const cached = localStorage.getItem('sheet_cache_data');
+    const cachedTime = Number(localStorage.getItem('sheet_cache_time') || 0);
+    const now = Date.now();
+    if (!shouldForce && cached && now - cachedTime < 600000) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed) return parsed;
+      } catch (e) {}
+    }
+    if (this.api && typeof this.api.getData === 'function') {
+      const fresh = await this.api.getData();
+      localStorage.setItem('sheet_cache_data', JSON.stringify(fresh));
+      localStorage.setItem('sheet_cache_time', String(now));
+      return fresh;
+    }
+    return cached ? JSON.parse(cached) : {};
+  }
+
+  matchItem(item) {
+    const y = getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']);
+    const d = getVal(item, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']);
+    if (this.filters.year && !sameYear(y, this.filters.year)) return false;
+    if (this.filters.dept && !normAr(d).includes(normAr(this.filters.dept))) return false;
+    return true;
+  }
+
+  async mount(container) {
+    const self = this;
+    this.injectDashboardStyles();
+    container.innerHTML =
+      '<div class="db-banner">' +
+      '<div>' +
+      '<h2 class="db-banner-title">نظام إدارة الجداول الأكاديمية الذكي</h2>' +
+      '<p class="db-banner-sub">لوحة متابعة المواد الدراسية وأعضاء هيئة التدريس والقاعات</p>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button id="dbGoSch" class="db-btn on">عرض الجدول المفلتر</button>' +
+      '<button id="dbRefresh" class="db-btn">تحديث البيانات</button>' +
+      '</div>' +
+      '</div>' +
+      '<div class="db-toolbar">' +
+      '<div class="db-field">' +
+      '<label>الفرقة الدراسية</label>' +
+      '<select id="dbYear" class="db-sel"><option value="">-- كل الفرق --</option></select>' +
+      '</div>' +
+      '<div class="db-field">' +
+      '<label>القسم / الشعبة</label>' +
+      '<select id="dbDept" class="db-sel"><option value="">-- كل الأقسام --</option></select>' +
+      '</div>' +
+      '<button id="dbReset" class="db-btn" style="margin-right:auto">إعادة ضبط</button>' +
+      '</div>' +
+      '<div id="dbLoading" style="text-align:center;color:#0284c7;font-weight:700;padding:12px;display:none">جاري تحميل البيانات...</div>' +
+      '<div id="dbBody"></div>';
+
+    const ySel = document.getElementById('dbYear');
+    const dSel = document.getElementById('dbDept');
+    const rBtn = document.getElementById('dbRefresh');
+    const rstBtn = document.getElementById('dbReset');
+    const goBtn = document.getElementById('dbGoSch');
+
+    if (ySel) {
+      ySel.onchange = function (e) {
+        self.filters.year = e.target.value;
+        self.inspection = null;
+        self.render(false);
+      };
+    }
+    if (dSel) {
+      dSel.onchange = function (e) {
+        self.filters.dept = e.target.value;
+        self.inspection = null;
+        self.render(false);
+      };
+    }
+    if (rBtn) {
+      rBtn.onclick = function () {
+        self.inspection = null;
+        self.render(true);
+      };
+    }
+    if (rstBtn) {
+      rstBtn.onclick = function () {
+        self.filters = { year: '', dept: '' };
+        self.inspection = null;
+        if (ySel) ySel.value = '';
+        if (dSel) dSel.value = '';
+        self.render(false);
+      };
+    }
+    if (goBtn) {
+      goBtn.onclick = function () {
+        if (self.onNavigate) {
+          self.onNavigate('scheduler', { year: self.filters.year, dept: self.filters.dept });
+        }
+      };
+    }
+
+    await this.render(false);
+  }
+
+  populateFilters(data) {
+    const schedules = Array.isArray(data) ? data : pickArray(data, ['schedules', 'schedule', 'الجداول']);
+    const courses = pickArray(data, ['courses', 'subjects', 'المواد', 'المواد الدراسية']);
+    const faculty = pickArray(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
+    const years = new Set();
+    const depts = new Set();
+
+    courses.concat(schedules).forEach(function (it) {
+      const y = getVal(it, ['الفرقة *', 'الفرقة', 'yearLevel']);
+      const d = getVal(it, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']);
+      if (y) years.add(y);
+      if (d) depts.add(d);
+    });
+    faculty.forEach(function (f) {
+      const d = getVal(f, FACULTY_DEPT_COLS);
+      if (d) depts.add(d);
+    });
+
+    const ySel = document.getElementById('dbYear');
+    const dSel = document.getElementById('dbDept');
+    const yList = sortYears(Array.from(years));
+    const dList = Array.from(depts).sort(function (a, b) { return a.localeCompare(b, 'ar'); });
+
+    if (ySel) {
+      ySel.innerHTML = '<option value="">-- كل الفرق --</option>';
+      yList.forEach(function (y) { ySel.appendChild(new Option(y, y)); });
+      ySel.value = this.filters.year && yList.indexOf(this.filters.year) !== -1 ? this.filters.year : '';
+    }
+    if (dSel) {
+      dSel.innerHTML = '<option value="">-- كل الأقسام --</option>';
+      dList.forEach(function (d) { dSel.appendChild(new Option(d, d)); });
+      dSel.value = this.filters.dept && dList.indexOf(this.filters.dept) !== -1 ? this.filters.dept : '';
+    }
+  }
+
+  async render(force) {
+    const self = this;
+    const loading = document.getElementById('dbLoading');
+    const body = document.getElementById('dbBody');
+    if (loading) loading.style.display = 'block';
+
+    let data;
+    try {
+      data
