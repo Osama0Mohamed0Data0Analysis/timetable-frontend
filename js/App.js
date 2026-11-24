@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — الخطوة 1 (محدث): داش بورد تفاعلية وديناميكية بالكامل
+//  نظام الجداول — داش بورد تفاعلية وديناميكية + شاشات النظام
 // =====================================================================
 
 const COLS = {
@@ -161,7 +161,6 @@ function injectStyles() {
           font:inherit;color:var(--ink);cursor:pointer;font-size:0.9rem}
   .tt-loading{text-align:center;color:#0284c7;font-weight:700;padding:12px;display:none}
 
-  /* Interactive Dashboard Styles */
   .db-banner{background:linear-gradient(135deg,#071b38 0%,#0f3566 100%);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:14px;border-bottom:4px solid #f59e0b;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
   .db-banner-title{margin:0;font-size:1.35rem;font-weight:800;letter-spacing:-.2px}
   .db-banner-sub{margin:4px 0 0;font-size:.88rem;color:#cbd5e1}
@@ -218,4 +217,16 @@ function injectStyles() {
   .tt-stat-num{font-size:1.6rem;font-weight:800;color:var(--ink)}
   .tt-stat-lbl{font-size:.85rem;color:var(--mute);font-weight:600}
   .tt-requests-box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
-  .tt-requests-title{font-weight:700;font-size:1.05rem
+  .tt-requests-title{font-weight:700;font-size:1.05rem;margin-bottom:12px;color:var(--ink)}
+  .tt-request-card{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+  .tt-req-action-btn{padding:6px 14px;border-radius:6px;font:inherit;font-weight:600;cursor:pointer;border:none}
+  .tt-btn-approve{background:#10b981;color:#fff}
+  .tt-btn-reject{background:#ef4444;color:#fff}
+  .tt-wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .tt-table{width:100%;min-width:860px;border-collapse:collapse;table-layout:fixed}
+  .tt-table th{background:var(--head);padding:12px 8px;font-weight:600;border:1px solid var(--line);border-top:0}
+  .tt-table td{border:1px solid var(--line);padding:6px;vertical-align:top;height:120px}
+  .tt-table th:first-child,.tt-table td.tt-time{width:115px}
+  .tt-table td.tt-time{background:var(--head);font-weight:600;text-align:center;vertical-align:middle;font-size:.92rem}
+  .tt-card{background:var(--lec-bg);border-right:4px solid var(--lec-bd);border-radius:6px;padding:8px 10px;margin-bottom:6px;
+           min-
