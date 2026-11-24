@@ -20,8 +20,6 @@ const INSTRUCTOR_COLS = ['اسم الدكتور / المعيد *', 'اسم ال�
 const ROOM_COLS = ['رقم القاعة', '* النوع', 'اسم القاعة', 'hall', 'room'];
 
 const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
-const DEFAULT_FIRST_HOUR = 9;
-const DEFAULT_LAST_HOUR = 14;
 
 // ---------- دوال مساعدة ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -56,24 +54,6 @@ function getVal(item, keys) {
   return '';
 }
 const col = (item, name) => getVal(item, COLS[name]);
-
-function parseHour(v) {
-  if (v === undefined || v === null) return null;
-  const s = normAr(v);
-  if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
-    const d = new Date(s);
-    return isNaN(d) ? null : Math.round(d.getHours() + d.getMinutes() / 60);
-  }
-  const m = s.match(/(\d{1,2})(?::(\d{2}))?\s*(ص|م|am|pm)?/i);
-  if (!m) return null;
-  let h = parseInt(m[1], 10);
-  const suf = (m[3] || '').toLowerCase();
-  if ((suf === 'م' || suf === 'pm') && h < 12) h += 12;
-  else if ((suf === 'ص' || suf === 'am') && h === 12) h = 0;
-  else if (!suf && h < 8) h += 12;
-  return h;
-}
 
 const pad = n => String(n).padStart(2, '0');
 const slotLabel = h => `<bdi dir="ltr">${pad(h)}:00–${pad(h + 1)}:00</bdi>`;
@@ -589,7 +569,6 @@ class SchedulerView {
     this.populateSelect('selInstructor', [...instructors].sort((a,b)=>a.localeCompare(b,'ar')), this.filters.instructor, '-- كل الدكاترة --');
     this.populateSelect('selHall', [...halls].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})), this.filters.hall, '-- كل القاعات --');
 
-    // تحديث الإحصائيات وطلبات الدكاترة
     const statDist = document.getElementById('statDistributed');
     if (statDist) statDist.textContent = this.schedules.length;
 
@@ -759,3 +738,101 @@ class DoctorView {
       btn.onclick = async e => {
         const subj = e.currentTarget.dataset.subject;
         if (!confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) return;
+        await this.api.sendAction({
+          action: 'addRequest',
+          doctorName: this.selected,
+          details: `اعتذار عن مادة ${subj}`,
+          reason: this.reason,
+        });
+        alert('تم إرسال طلب الاعتذار للمنسق بنجاح!');
+        localStorage.removeItem('sheet_cache_data');
+        await this.refresh(true);
+      };
+    });
+  }
+}
+
+// ---------- شاشة الطالب ----------
+class StudentView {
+  constructor(api) {
+    this.api = api;
+    this.schedules = [];
+    this.year = '';
+    this.group = '';
+  }
+
+  async mount(container) {
+    container.innerHTML = `
+      <div class="tt-note">اختر الفرقة والمجموعة لاستعراض جدولك الدراسي.</div>
+      <div class="tt-filters">
+        <div class="tt-field">
+          <label>الفرقة الدراسية</label>
+          <select id="stYear" class="tt-sel"></select>
+        </div>
+        <div class="tt-field">
+          <label>المجموعة</label>
+          <select id="stGroup" class="tt-sel" style="min-width:200px"></select>
+        </div>
+      </div>
+      <div class="tt-banner">جدولك محدّث. مفيش تغييرات.</div>
+      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="stBody"></tbody></table></div>`;
+
+    const stYear = document.getElementById('stYear');
+    if (stYear) stYear.onchange = e => {
+      this.year = e.target.value;
+      this.build();
+    };
+
+    const stGroup = document.getElementById('stGroup');
+    if (stGroup) stGroup.onchange = e => {
+      this.group = e.target.value;
+      this.build();
+    };
+
+    await this.refresh();
+  }
+
+  async refresh() {
+    const data = await loadData(this.api);
+    this.schedules = schedulesOf(data);
+
+    const years = new Set();
+    const groups = new Set();
+    if (data && data.groups && Array.isArray(data.groups)) {
+      data.groups.forEach(g => {
+        if (g['الفرقة']) years.add(g['الفرقة'].toString().trim());
+        if (g['المجموعة']) groups.add(g['المجموعة'].toString().trim());
+      });
+    }
+    this.schedules.forEach(it => {
+      const y = col(it, 'year');
+      const g = col(it, 'group') || col(it, 'dept');
+      if (y) years.add(y);
+      if (g) groups.add(g);
+    });
+
+    const yList = sortYears([...years]);
+    const gList = [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}));
+
+    const ySel = document.getElementById('stYear');
+    if (ySel) {
+      ySel.innerHTML = '';
+      yList.forEach(y => ySel.appendChild(new Option(y, y)));
+      if (!this.year || !yList.includes(this.year)) this.year = yList[0] || '';
+      ySel.value = this.year;
+    }
+
+    const gSel = document.getElementById('stGroup');
+    if (gSel) {
+      gSel.innerHTML = '<option value="">-- كل المجموعات --</option>';
+      gList.forEach(g => gSel.appendChild(new Option(g, g)));
+      if (!this.group || !gList.includes(this.group)) this.group = '';
+      gSel.value = this.group;
+    }
+
+    this.build();
+  }
+
+  build() {
+    const tbody = document.getElementById('stBody');
+    if (!tbody) return;
