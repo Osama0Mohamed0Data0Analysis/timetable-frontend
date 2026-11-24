@@ -233,9 +233,9 @@ export async function loadData(api, force = false) {
 
 export const schedulesOf = data => (Array.isArray(data) ? data : (data && data.schedules) || []);
 
-function compactLogoSvg() {
+function compactLogoSvg(size = 28) {
   return `
-    <svg viewBox="0 0 64 64" width="34" height="34" aria-hidden="true">
+    <svg viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true" style="display:block;flex-shrink:0">
       <circle cx="32" cy="32" r="29" fill="#0d2a5c" stroke="#f59e0b" stroke-width="2.5" />
       <path d="M14 26 L32 16 L50 26 L32 36 Z" fill="#fbbf24" />
       <path d="M21 31 V42 C21 45 26 48 32 48 C38 48 43 45 43 42 V31" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" />
@@ -246,62 +246,73 @@ function compactLogoSvg() {
 }
 
 export function injectStyles() {
-  if (document.getElementById('sada-compact-right-styles')) return;
+  if (document.getElementById('sada-refined-layout-styles')) return;
   const st = document.createElement('style');
-  st.id = 'sada-compact-right-styles';
+  st.id = 'sada-refined-layout-styles';
   st.textContent = `
-    .sada-app-wrap{display:flex;flex-direction:row;width:100%;max-width:100%;min-height:100vh;direction:rtl;background:#f8fafc;color:#0f172a;margin:0;padding:0}
-    .sada-side-slim{width:215px;min-width:215px;max-width:215px;background:linear-gradient(180deg,#081d40 0%,#0c2858 100%);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:200;margin-right:0;flex-shrink:0}
-    .sada-side-head{padding:14px 10px;border-bottom:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;align-items:center;text-align:center;gap:5px}
-    .sada-side-name{margin:0;font-size:.96rem;font-weight:800;color:#fff}
-    .sada-side-desc{margin:0;font-size:.72rem;color:#cbd5e1}
-    .sada-side-nav{padding:10px 8px;display:flex;flex-direction:column;gap:4px;flex:1;overflow-y:auto}
-    .sada-side-btn{width:100%;display:flex;align-items:center;gap:8px;padding:9px 11px;border:none;border-radius:8px;background:transparent;color:#e2e8f0;font:inherit;font-size:.82rem;font-weight:700;cursor:pointer;text-align:right;transition:background .15s,color .15s}
+    .sada-app-wrap{display:flex;flex-direction:row;width:100%;max-width:100%;min-height:100vh;direction:rtl;background:#f8fafc;color:#0f172a;margin:0;padding:0;font-size:13.5px;line-height:1.45;font-family:'IBM Plex Sans Arabic','Readex Pro',system-ui,-apple-system,sans-serif}
+    .sada-side-slim{width:196px;min-width:196px;max-width:196px;background:linear-gradient(180deg,#081d40 0%,#0c2858 100%);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:200;margin-right:0;flex-shrink:0;box-shadow:-2px 0 10px rgba(15,23,42,.08)}
+    .sada-side-head{padding:11px 8px;border-bottom:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px}
+    .sada-side-name{margin:0;font-size:.86rem;font-weight:800;color:#fff;letter-spacing:0}
+    .sada-side-desc{margin:0;font-size:.66rem;color:#cbd5e1}
+    .sada-side-nav{padding:8px 6px;display:flex;flex-direction:column;gap:3px;flex:1;overflow-y:auto}
+    .sada-side-btn{width:100%;display:flex;align-items:center;gap:6px;padding:7px 9px;border:none;border-radius:7px;background:transparent;color:#e2e8f0;font:inherit;font-size:.76rem;font-weight:700;cursor:pointer;text-align:right;transition:background .15s,color .15s}
     .sada-side-btn:hover{background:rgba(255,255,255,.1);color:#fff}
-    .sada-side-btn.on{background:#2563eb;color:#fff}
-    .sada-page-body{flex:1;min-width:0;width:100%;padding:14px 16px 36px;box-sizing:border-box}
-    .sada-mob-bar{display:none;align-items:center;justify-content:space-between;padding:8px 12px;background:#0c2858;color:#fff;position:sticky;top:0;z-index:150}
-    .sada-mob-btn{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:7px;padding:4px 10px;font:inherit;font-size:.8rem;font-weight:700;cursor:pointer}
-    .sada-backdrop{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:190}
-    .dash-panel{display:flex;flex-direction:column;gap:14px}
-    .dash-head-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px}
-    .dash-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
-    .dash-kpi-box{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px}
-    .dash-kpi-t{font-size:.76rem;color:#64748b;font-weight:600}
-    .dash-kpi-v{font-size:1.25rem;font-weight:800;color:#0f172a;margin-top:3px}
-    .dash-kpi-s{font-size:.72rem;color:#475569;margin-top:2px}
-    .dash-2col{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
-    .dash-sec{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px}
-    .dash-sec-t{margin:0 0 10px;font-size:.92rem;font-weight:800;color:#0f172a;border-bottom:1px solid #f1f5f9;padding-bottom:6px}
-    .dash-bar{margin-bottom:8px}
-    .dash-bar-l{display:flex;justify-content:space-between;font-size:.78rem;font-weight:600;color:#334155;margin-bottom:3px}
-    .dash-bar-tr{height:7px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+    .sada-side-btn.on{background:#2563eb;color:#fff;box-shadow:0 1px 4px rgba(37,99,235,.35)}
+    .sada-page-body{flex:1;min-width:0;width:100%;padding:12px 14px 28px;box-sizing:border-box}
+    .sada-mob-bar{display:none;align-items:center;justify-content:space-between;padding:7px 10px;background:#0c2858;color:#fff;position:sticky;top:0;z-index:150;border-radius:8px;margin-bottom:10px}
+    .sada-mob-btn{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:6px;padding:4px 9px;font:inherit;font-size:.74rem;font-weight:700;cursor:pointer}
+    .sada-backdrop{display:none;position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:190}
+
+    .dash-panel{display:flex;flex-direction:column;gap:10px}
+    .dash-head-card{background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:10px 13px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px}
+    .dash-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+    .dash-kpi-box{background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:9px 11px}
+    .dash-kpi-t{font-size:.7rem;color:#64748b;font-weight:600}
+    .dash-kpi-v{font-size:1.05rem;font-weight:800;color:#0f172a;margin-top:2px}
+    .dash-kpi-s{font-size:.66rem;color:#475569;margin-top:2px}
+    .dash-2col{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px}
+    .dash-sec{background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px}
+    .dash-sec-t{margin:0 0 8px;font-size:.82rem;font-weight:800;color:#0f172a;border-bottom:1px solid #f1f5f9;padding-bottom:5px}
+    .dash-bar{margin-bottom:6px}
+    .dash-bar-l{display:flex;justify-content:space-between;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:2px}
+    .dash-bar-tr{height:5px;background:#e2e8f0;border-radius:999px;overflow:hidden}
     .dash-bar-fl{height:100%;background:#1d4ed8;border-radius:999px}
-    .dash-table{width:100%;border-collapse:collapse;font-size:.8rem}
-    .dash-table th,.dash-table td{border:1px solid #e2e8f0;padding:6px 8px;text-align:right}
+    .dash-table{width:100%;border-collapse:collapse;font-size:.72rem}
+    .dash-table th,.dash-table td{border:1px solid #e2e8f0;padding:5px 7px;text-align:right}
     .dash-table th{background:#f8fafc;color:#334155;font-weight:700}
-    .tt-loading{padding:28px;text-align:center;color:#0284c7;font-weight:700}
-    .tt-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#fff;padding:12px 14px;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:14px}
-    .tt-field{display:flex;flex-direction:column;gap:4px}
-    .tt-field label{font-size:.78rem;font-weight:700;color:#334155}
-    .tt-sel{padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font:inherit;font-size:.84rem}
-    .tt-btn{padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;color:#0f172a;font:inherit;font-size:.82rem;font-weight:700;cursor:pointer}
+
+    .tt-loading{padding:22px;text-align:center;color:#0284c7;font-weight:700;font-size:.82rem}
+    .tt-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;background:#fff;padding:9px 11px;border-radius:9px;border:1px solid #e2e8f0;margin-bottom:10px}
+    .tt-field{display:flex;flex-direction:column;gap:3px}
+    .tt-field label{font-size:.7rem;font-weight:700;color:#334155}
+    .tt-sel{padding:5px 8px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;font:inherit;font-size:.76rem}
+    .tt-btn{padding:5px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;color:#0f172a;font:inherit;font-size:.74rem;font-weight:700;cursor:pointer}
     .tt-btn.on{background:#162447;color:#fff;border-color:#162447}
-    .tt-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;overflow-x:auto}
-    .tt-table{width:100%;border-collapse:collapse;text-align:center;min-width:850px}
-    .tt-table th,.tt-table td{border:1px solid #e2e8f0;padding:8px;vertical-align:top}
-    .tt-table th{background:#f1f5f9;color:#334155;font-weight:700}
-    .tt-time{font-weight:700;background:#f8fafc;white-space:nowrap;color:#334155}
-    .tt-card{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px;margin-bottom:6px;text-align:right}
+    .tt-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:9px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .tt-table{width:100%;border-collapse:collapse;text-align:center;min-width:740px}
+    .tt-table th,.tt-table td{border:1px solid #e2e8f0;padding:5px 6px;vertical-align:top}
+    .tt-table th{background:#f1f5f9;color:#334155;font-weight:700;font-size:.74rem}
+    .tt-time{font-weight:700;background:#f8fafc;white-space:nowrap;color:#334155;font-size:.72rem}
+    .tt-card{background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:5px 7px;margin-bottom:4px;text-align:right}
     .tt-card.sec{background:#fef3c7;border-color:#fcd34d}
-    .tt-subj{font-weight:700;color:#0f172a;font-size:.86rem}
-    .tt-meta{color:#475569;font-size:.76rem;margin-top:2px}
-    .tt-note{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;margin-bottom:12px;color:#475569;font-size:.84rem}
+    .tt-subj{font-weight:700;color:#0f172a;font-size:.76rem;line-height:1.3}
+    .tt-meta{color:#475569;font-size:.68rem;margin-top:2px;line-height:1.3}
+    .tt-note{background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:8px 11px;margin-bottom:10px;color:#475569;font-size:.76rem}
+
     @media (max-width: 860px){
+      .sada-app-wrap{font-size:12.5px}
       .sada-mob-bar{display:flex}
-      .sada-side-slim{position:fixed;right:-225px;top:0;bottom:0;height:100vh;transition:right .2s ease}
+      .sada-side-slim{width:186px;min-width:186px;max-width:186px;position:fixed;right:-196px;top:0;bottom:0;height:100vh;transition:right .2s ease}
       .sada-side-slim.open{right:0}
       .sada-backdrop.open{display:block}
+      .sada-page-body{padding:8px 8px 24px}
+      .dash-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+      .dash-2col{grid-template-columns:1fr;gap:8px}
+      .tt-filters{gap:6px;padding:8px}
+      .tt-field{flex:1 1 calc(50% - 6px);min-width:120px}
+      .tt-sel{width:100%;font-size:.74rem}
+      .tt-table{min-width:640px}
     }
   `;
   document.head.appendChild(st);
@@ -355,7 +366,7 @@ export function renderGrid(tbody, items, opts = {}) {
 }
 
 function barListHtml(entries) {
-  if (!entries.length) return '<div style="color:#64748b;font-size:.78rem">لا توجد بيانات.</div>';
+  if (!entries.length) return '<div style="color:#64748b;font-size:.72rem">لا توجد بيانات.</div>';
   const maxVal = Math.max(...entries.map(e => e.value), 1);
   return entries.map(e => {
     const pct = Math.min(100, Math.round((e.value / maxVal) * 100));
@@ -401,7 +412,7 @@ export class SchedulerView {
           <label>القاعة / المدرج</label>
           <select id="selHall" class="tt-sel"><option value="">-- كل القاعات --</option></select>
         </div>
-        <div style="display:flex;gap:8px;margin-right:auto;">
+        <div style="display:flex;gap:6px;margin-right:auto;flex-wrap:wrap;">
           <button id="btnRefresh" class="tt-btn" type="button">تحديث</button>
           <button id="btnGenerate" class="tt-btn on" type="button">توليد الجدول</button>
         </div>
@@ -495,7 +506,7 @@ export class DoctorView {
       <div class="tt-filters">
         <div class="tt-field">
           <label for="docSelect">اختر اسمك</label>
-          <select id="docSelect" class="tt-sel" style="min-width:240px"><option value="">-- اختر الدكتور --</option></select>
+          <select id="docSelect" class="tt-sel" style="min-width:210px"><option value="">-- اختر الدكتور --</option></select>
         </div>
         <div class="tt-field">
           <label for="reasonSelect">سبب الاعتذار</label>
@@ -562,8 +573,8 @@ export class DoctorView {
     renderGrid(tbody, items, {
       showYear: true,
       doctorExtra: (it, subject) => `
-        <div style="margin-top:6px">
-          <button type="button" class="tt-btn doc-req-btn" data-subj="${esc(subject)}" style="padding:3px 8px;font-size:.74rem">اعتذار / تعديل</button>
+        <div style="margin-top:4px">
+          <button type="button" class="tt-btn doc-req-btn" data-subj="${esc(subject)}" style="padding:2px 7px;font-size:.68rem">اعتذار / تعديل</button>
         </div>
       `,
     });
@@ -702,7 +713,7 @@ export class App {
         <div id="sadaBackdrop" class="sada-backdrop"></div>
         <aside id="sadaSideSlim" class="sada-side-slim">
           <div class="sada-side-head">
-            <div>${compactLogoSvg()}</div>
+            <div>${compactLogoSvg(28)}</div>
             <h1 class="sada-side-name">أكاديمية السادات</h1>
             <p class="sada-side-desc">تنظيم الجداول الدراسية</p>
           </div>
@@ -715,8 +726,8 @@ export class App {
         </aside>
         <div class="sada-page-body">
           <div class="sada-mob-bar">
-            <div style="display:flex;align-items:center;gap:8px;font-weight:800;font-size:.88rem">
-              ${compactLogoSvg()}
+            <div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:.8rem">
+              ${compactLogoSvg(22)}
               <span>أكاديمية السادات</span>
             </div>
             <button id="sadaMobBtn" class="sada-mob-btn" type="button">☰ القائمة</button>
