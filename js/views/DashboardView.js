@@ -370,17 +370,4 @@ export class DashboardView {
     }
     if (dSel) {
       dSel.innerHTML = '<option value="">-- كل الأقسام --</option>';
-      dList.forEach(function (d) { dSel.appendChild(new Option(d, d)); });
-      dSel.value = this.filters.dept && dList.indexOf(this.filters.dept) !== -1 ? this.filters.dept : '';
-    }
-  }
-
-  async render(force) {
-    const self = this;
-    const loading = document.getElementById('dbLoading');
-    const body = document.getElementById('dbBody');
-    if (loading) loading.style.display = 'block';
-
-    let data;
-    try {
-      data
+      dList.forEach(function (
