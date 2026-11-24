@@ -1,5 +1,4 @@
-import { DashboardView } from './DashboardView.js';
-
+import { DashboardView } from './js/views/DashboardView.js';
 const COLS = {
   day:       ['اليوم', 'day'],
   start:     ['وقت البداية', 'البداية', 'من الساعة', 'الوقت', 'startTime', 'time'],
