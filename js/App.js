@@ -638,6 +638,7 @@ export class App {
   constructor(container, api) {
     this.container = container;
     this.api = api;
+    this.chatBot = null;
   }
 
   async start() {
@@ -652,6 +653,9 @@ export class App {
         </div>
         <div id="viewContainer"></div>
       </div>`;
+
+    this.chatBot = new SheetChatBot(this.api);
+    this.chatBot.mount(this.container);
 
     const navDashboard = document.getElementById('navDashboard');
     if (navDashboard) navDashboard.onclick = () => this.switchView('dashboard');
