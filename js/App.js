@@ -833,6 +833,74 @@ class StudentView {
     this.build();
   }
 
-  build() {
+ build() {
     const tbody = document.getElementById('stBody');
     if (!tbody) return;
+    const items = this.schedules.filter(it => matchesFilter(it, { year: this.year, group: this.group }));
+    renderGrid(tbody, items);
+  }
+}
+
+// ---------- التطبيق الرئيسي ----------
+export class App {
+  constructor(container, api) {
+    this.container = container;
+    this.api = api;
+  }
+
+  async start() {
+    injectStyles();
+    this.container.innerHTML = `
+      <div class="tt">
+        <div class="tt-nav">
+          <button id="navDashboard" class="tt-btn">الداش بورد</button>
+          <button id="navScheduler" class="tt-btn">1) منسق الجداول</button>
+          <button id="navDoctor" class="tt-btn">2) دكتور / معيد</button>
+          <button id="navStudent" class="tt-btn">3) طالب</button>
+        </div>
+        <div id="viewContainer"></div>
+      </div>`;
+
+    const navDashboard = document.getElementById('navDashboard');
+    if (navDashboard) navDashboard.onclick = () => this.switchView('dashboard');
+
+    const navScheduler = document.getElementById('navScheduler');
+    if (navScheduler) navScheduler.onclick = () => this.switchView('scheduler');
+
+    const navDoctor = document.getElementById('navDoctor');
+    if (navDoctor) navDoctor.onclick = () => this.switchView('doctor');
+
+    const navStudent = document.getElementById('navStudent');
+    if (navStudent) navStudent.onclick = () => this.switchView('student');
+
+    this.switchView('dashboard');
+  }
+
+  async switchView(name) {
+    const btns = {
+      dashboard: 'navDashboard',
+      scheduler: 'navScheduler',
+      doctor: 'navDoctor',
+      student: 'navStudent',
+    };
+    Object.entries(btns).forEach(([k, id]) => {
+      const b = document.getElementById(id);
+      if (b) b.classList.toggle('on', k === name);
+    });
+
+    const vc = document.getElementById('viewContainer');
+    if (vc) {
+      vc.innerHTML = '<div class="tt-loading" style="display:block">جاري التحميل...</div>';
+
+      const views = {
+        dashboard: DashboardView,
+        scheduler: SchedulerView,
+        doctor: DoctorView,
+        student: StudentView,
+      };
+      const ViewClass = views[name] || DashboardView;
+      const view = new ViewClass(this.api, target => this.switchView(target));
+      await view.mount(vc);
+    }
+  }
+}
