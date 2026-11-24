@@ -10,6 +10,12 @@ const ROOM_FLOOR_COLS = ['* الدور', 'الدور', 'floor'];
 const ROOM_REQ_TYPE_COLS = ['نوع القاعة المطلوبة *', 'نوع القاعة المطلوبة', 'roomType'];
 const LEC_HRS_COLS = ['ساعات المحاضرة أسبوعياً *', 'ساعات المحاضرة أسبوعياً', 'ساعات المحاضرة'];
 const SEC_HRS_COLS = ['ساعات السكشن أسبوعياً', 'ساعات السكاشن أسبوعياً', 'ساعات السكشن'];
+const GROUP_YEAR_COLS = ['الفرقة', 'الفرقة *', 'yearLevel'];
+const GROUP_DEPT_COLS = ['البرنامج / الشعبة', 'الشعبة / القسم', 'القسم', 'department'];
+const GROUP_NAME_COLS = ['المجموعة', 'group'];
+const GROUP_STUDENTS_COLS = ['عدد الطلاب', 'students'];
+const GROUP_NOTES_COLS = ['ملاحظات', 'notes'];
+const PERIOD_DAY_COLS = ['أيام الدراسة *', 'أيام الدراسة', 'اليوم', 'day'];
 const CHART_COLORS = ['#1e3a8a', '#2563eb', '#0284c7', '#0d9488', '#15803d', '#d97706', '#b4600c', '#4f46e5', '#64748b'];
 
 function esc(s) {
@@ -266,7 +272,7 @@ export class DashboardView {
       '.db-chip-list{display:flex;flex-wrap:wrap;gap:8px}',
       '.db-chip{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:8px;padding:6px 10px;font-size:.82rem;font-weight:600;cursor:pointer}',
       '.db-chip:hover,.db-chip.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}',
-      '.db-member-card{margin-top:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:12px;font-size:.84rem}',
+      '.db-member-card{margin-top:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:12px;font-size:.84rem;line-height:1.65}',
       '.db-mini-list{display:flex;flex-direction:column;gap:8px}',
       '.db-mini-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:.83rem}',
       '.db-sub-head{font-size:.85rem;font-weight:700;color:#1e293b;margin:10px 0 6px}',
@@ -335,6 +341,14 @@ export class DashboardView {
     return true;
   }
 
+  matchGroup(item) {
+    const y = getVal(item, GROUP_YEAR_COLS);
+    const d = getVal(item, GROUP_DEPT_COLS);
+    if (this.filters.year && !sameYear(y, this.filters.year)) return false;
+    if (this.filters.dept && !sameText(d, this.filters.dept)) return false;
+    return true;
+  }
+
   resetAllFilters() {
     this.filters = {
       year: '',
@@ -388,7 +402,7 @@ export class DashboardView {
       '<div class="db-banner">' +
       '<div>' +
       '<h2 class="db-banner-title">نظام إدارة الجداول الأكاديمية الذكي</h2>' +
-      '<p class="db-banner-sub">لوحة متابعة ديناميكية للمواد الدراسية وأعضاء هيئة التدريس والقاعات والتحليلات الأكاديمية</p>' +
+      '<p class="db-banner-sub">لوحة متابعة ديناميكية شاملة للمواد الدراسية وأعضاء هيئة التدريس والقاعات والمجموعات والفترات</p>' +
       '</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<button id="dbGoSch" class="db-btn on">عرض الجدول المفلتر</button>' +
@@ -562,6 +576,7 @@ export class DashboardView {
     const filteredSchedules = schedules.filter(function (s) { return self.matchCourse(s); });
     const filteredFaculty = allFaculty.filter(function (f) { return self.matchFaculty(f); });
     const filteredRooms = allRooms.filter(function (r) { return self.matchRoom(r); });
+    const filteredGroups = allGroups.filter(function (g) { return self.matchGroup(g); });
 
     const courseSource = filteredCourses.length ? filteredCourses : filteredSchedules;
     const uniqueSubjects = new Set(
@@ -585,11 +600,14 @@ export class DashboardView {
     const totalFaculty = filteredFaculty.length || facultyNames.size;
 
     let totalCapacity = 0;
+    let maxCapacity = 0;
     const roomTypes = new Map();
     const roomsByBuilding = new Map();
     const roomsByFloor = new Map();
     filteredRooms.forEach(function (r) {
-      totalCapacity += toNum(getVal(r, ROOM_CAP_COLS));
+      const cap = toNum(getVal(r, ROOM_CAP_COLS));
+      totalCapacity += cap;
+      if (cap > maxCapacity) maxCapacity = cap;
       const rt = getVal(r, ROOM_TYPE_COLS) || 'غير محدد';
       const bldg = getVal(r, ROOM_BLDG_COLS) || 'غير محدد';
       const flr = getVal(r, ROOM_FLOOR_COLS) || 'غير محدد';
@@ -606,12 +624,15 @@ export class DashboardView {
     let missingSectionCount = 0;
     const coursesByYear = new Map();
     const coursesByDept = new Map();
+    const reqRoomTypes = new Map();
+
     courseSource.forEach(function (item) {
       const y = getVal(item, ['الفرقة *', 'الفرقة', 'yearLevel']) || 'غير محدد';
       const d = getVal(item, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || 'عام';
       const lh = toNum(getVal(item, LEC_HRS_COLS));
       const sh = toNum(getVal(item, SEC_HRS_COLS));
       const assistants = getVal(item, ['المعيدين / السكاشن', 'assistant']);
+      const reqType = getVal(item, ROOM_REQ_TYPE_COLS);
       totalLecHours += lh;
       totalSecHours += sh;
       if (sh > 0 || assistants) {
@@ -619,8 +640,29 @@ export class DashboardView {
       } else {
         missingSectionCount += 1;
       }
+      if (reqType) {
+        reqRoomTypes.set(reqType, (reqRoomTypes.get(reqType) || 0) + 1);
+      }
       coursesByYear.set(y, (coursesByYear.get(y) || 0) + 1);
       coursesByDept.set(d, (coursesByDept.get(d) || 0) + 1);
+    });
+
+    let totalGroupStudents = 0;
+    const groupNotesList = [];
+    filteredGroups.forEach(function (g) {
+      totalGroupStudents += toNum(getVal(g, GROUP_STUDENTS_COLS));
+      const note = getVal(g, GROUP_NOTES_COLS);
+      const grpName = getVal(g, GROUP_NAME_COLS);
+      const grpYear = getVal(g, GROUP_YEAR_COLS);
+      if (note && groupNotesList.length < 4) {
+        groupNotesList.push((grpYear ? grpYear + ' - ' : '') + (grpName ? 'مجموعة ' + grpName + ': ' : '') + note);
+      }
+    });
+
+    const periodDays = new Set();
+    allPeriods.forEach(function (p) {
+      const day = getVal(p, PERIOD_DAY_COLS);
+      if (day) periodDays.add(day);
     });
 
     const facultyByDept = new Map();
@@ -641,6 +683,7 @@ export class DashboardView {
     const facultyRoleEntries = countMapEntries(facultyByRole);
     const buildingEntries = countMapEntries(roomsByBuilding);
     const floorEntries = countMapEntries(roomsByFloor);
+    const reqTypeEntries = countMapEntries(reqRoomTypes);
 
     let inspectorHtml = '';
     if (this.inspection) {
@@ -703,6 +746,9 @@ export class DashboardView {
       const hasMore = rawChips.length > 30;
 
       let memberCardHtml = '';
+      let summaryLecHours = 0;
+      let summarySecHours = 0;
+
       if (this.filters.instructor) {
         const targetName = this.filters.instructor;
         const memberObj = allFaculty.find(function (f) {
@@ -714,6 +760,12 @@ export class DashboardView {
           );
           return names.some(function (n) { return sameText(n, targetName); });
         });
+
+        assignedCourses.forEach(function (c) {
+          summaryLecHours += toNum(getVal(c, LEC_HRS_COLS));
+          summarySecHours += toNum(getVal(c, SEC_HRS_COLS));
+        });
+
         const subjNames = Array.from(new Set(assignedCourses.map(function (c) {
           return getVal(c, ['اسم المادة *', 'اسم المادة', 'subject']);
         }).filter(Boolean)));
@@ -722,8 +774,28 @@ export class DashboardView {
           '<div class="db-member-card">' +
           '<div><b>العضو المحدد:</b> ' + esc(targetName) + '</div>' +
           (memberObj ? '<div><b>الدرجة الوظيفية:</b> ' + esc(getVal(memberObj, FACULTY_ROLE_COLS) || '-') + ' | <b>القسم:</b> ' + esc(getVal(memberObj, FACULTY_DEPT_COLS) || '-') + '</div>' : '') +
+          '<div><b>عدد المواد المسندة:</b> ' + subjNames.length + ' | <b>ساعات المحاضرات:</b> ' + summaryLecHours + ' ساعة | <b>ساعات السكاشن:</b> ' + summarySecHours + ' ساعة</div>' +
           (memberObj && getVal(memberObj, FACULTY_NOTES_COLS) ? '<div><b>ملاحظات الشيت:</b> ' + esc(getVal(memberObj, FACULTY_NOTES_COLS)) + '</div>' : '') +
-          '<div><b>المواد المرتبطة في جدول المواد (' + subjNames.length + '):</b> ' + (subjNames.length ? esc(subjNames.join('، ')) : 'غير مدرج بالاسم الصريح في جدول المواد') + '</div>' +
+          '<div><b>المواد المرتبطة في جدول المواد:</b> ' + (subjNames.length ? esc(subjNames.join('، ')) : 'غير مدرج بالاسم الصريح في جدول المواد') + '</div>' +
+          '</div>';
+      } else if (group === 'courseYear' || group === 'courseDept' || group === 'courses') {
+        courseSource.forEach(function (c) {
+          if (group === 'courseYear' && !sameYear(getVal(c, ['الفرقة *', 'الفرقة', 'yearLevel']) || 'غير محدد', label)) return;
+          if (group === 'courseDept' && !sameText(getVal(c, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || 'عام', label)) return;
+          summaryLecHours += toNum(getVal(c, LEC_HRS_COLS));
+          summarySecHours += toNum(getVal(c, SEC_HRS_COLS));
+        });
+
+        memberCardHtml =
+          '<div class="db-member-card">' +
+          '<div><b>ملخص التحديد:</b> ' + esc(label) + ' | <b>عدد المواد:</b> ' + rawChips.length + ' | <b>ساعات المحاضرات:</b> ' + summaryLecHours + ' ساعة | <b>ساعات السكاشن:</b> ' + summarySecHours + ' ساعة</div>' +
+          '</div>';
+      } else if (group === 'rooms' || group === 'capacity' || group === 'roomType' || group === 'building' || group === 'floor') {
+        let capSum = 0;
+        filteredRooms.forEach(function (r) { capSum += toNum(getVal(r, ROOM_CAP_COLS)); });
+        memberCardHtml =
+          '<div class="db-member-card">' +
+          '<div><b>ملخص الأماكن المحددة:</b> ' + esc(label) + ' | <b>عدد الأماكن:</b> ' + filteredRooms.length + ' | <b>إجمالي السعة:</b> ' + capSum.toLocaleString('en-US') + ' طالب | <b>أقصى سعة:</b> ' + maxCapacity + ' طالب</div>' +
           '</div>';
       }
 
@@ -791,6 +863,18 @@ export class DashboardView {
         }).join('')
       : '<div class="db-empty">لا توجد ملاحظات مراجعة مسجلة.</div>';
 
+    const reqTypesHtml = reqTypeEntries.length
+      ? reqTypeEntries.map(function (rt) {
+          return '<div class="db-mini-row"><span>مواد تطلب: <b>' + esc(rt.label) + '</b></span><b>' + rt.value + ' مادة</b></div>';
+        }).join('')
+      : '<div class="db-empty">لا توجد أنواع قاعات محددة على المواد.</div>';
+
+    const groupNotesHtml = groupNotesList.length
+      ? groupNotesList.map(function (gn) {
+          return '<div class="db-note-item">' + esc(gn) + '</div>';
+        }).join('')
+      : '<div class="db-empty">لا توجد ملاحظات إضافية على المجموعات.</div>';
+
     if (!body) return;
     body.innerHTML =
       '<div class="db-kpis">' +
@@ -812,7 +896,7 @@ export class DashboardView {
       '<div class="db-kpi g4 db-click-item" data-group="capacity" data-label="السعة الإجمالية للقاعات">' +
       '<div class="db-kpi-lbl">السعة الإجمالية للقاعات</div>' +
       '<div class="db-kpi-val">' + totalCapacity.toLocaleString('en-US') + '</div>' +
-      '<div class="db-kpi-sub">طالب (' + allGroups.length + ' مجموعة · ' + allPeriods.length + ' فترة)</div>' +
+      '<div class="db-kpi-sub">طالب (' + filteredGroups.length + ' مجموعة · ' + allPeriods.length + ' فترة)</div>' +
       '</div>' +
       '</div>' +
       inspectorHtml +
@@ -832,15 +916,20 @@ export class DashboardView {
       '<div class="db-mini-row"><span>إجمالي ساعات السكاشن أسبوعياً</span><b>' + totalSecHours + ' ساعة</b></div>' +
       '<div class="db-mini-row"><span>صفوف مواد بسكشن/معيد مسجل</span><b>' + rowsWithSections + '</b></div>' +
       '<div class="db-mini-row"><span>صفوف مواد بدون سكشن/معيد مسجل</span><b>' + missingSectionCount + '</b></div>' +
+      '<div class="db-mini-row"><span>أيام الفترات المسجلة</span><b>' + (periodDays.size ? esc(Array.from(periodDays).join('، ')) : allPeriods.length + ' فترة') + '</b></div>' +
+      '<div class="db-mini-row"><span>إجمالي طلاب المجموعات المسجلة</span><b>' + totalGroupStudents.toLocaleString('en-US') + '</b></div>' +
       '</div></div>' +
-      '<div class="db-card"><h3 class="db-card-title">توزيع القاعات حسب المبنى والدور</h3>' +
+      '<div class="db-card"><h3 class="db-card-title">توزيع القاعات والاحتياج للمواد</h3>' +
       hBarChartHtml(buildingEntries, 'building', this.filters.building) +
       '<div class="db-sub-head">توزيع القاعات حسب الدور</div>' +
       hBarChartHtml(floorEntries, 'floor', this.filters.floor) +
+      '<div class="db-sub-head">احتياج المواد لأنواع القاعات</div>' +
+      '<div class="db-mini-list">' + reqTypesHtml + '</div>' +
       '</div>' +
-      '<div class="db-card"><h3 class="db-card-title">قواعد الكلية وملاحظات المراجعة</h3>' +
+      '<div class="db-card"><h3 class="db-card-title">قواعد الكلية وملاحظات المراجعة والمجموعات</h3>' +
       '<div class="db-sub-head">قواعد الكلية</div>' + rulesHtml +
       '<div class="db-sub-head">ملاحظات المراجعة</div>' + notesHtml +
+      '<div class="db-sub-head">ملاحظات الفرق والمجموعات</div>' + groupNotesHtml +
       '</div>' +
       '</div>';
 
