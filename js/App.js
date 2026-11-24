@@ -74,7 +74,7 @@ export class App {
         student: StudentView,
       };
       const ViewClass = viewsMap[targetName];
-      const view = new ViewClass(this.api, extraState);
+      const view = extraState ? new ViewClass(this.api, extraState) : new ViewClass(this.api);
       await view.mount(viewContainer);
     } catch (err) {
       console.error('Error switching view:', err);
