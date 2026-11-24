@@ -1,5 +1,5 @@
 // =====================================================================
-//  نظام الجداول — داش بورد تفاعلية وديناميكية + شاشات النظام
+//  نظام الجداول — App.js الكامل (داش بورد ديناميكية + شاشات النظام)
 // =====================================================================
 
 const COLS = {
@@ -132,10 +132,24 @@ async function loadData(api, force = false) {
     throw err;
   }
 }
-const schedulesOf = data => (Array.isArray(data) ? data : (data && data.schedules) || []);
-const coursesOf = data => (data && Array.isArray(data.courses) ? data.courses : []);
-const roomsOf = data => (data && Array.isArray(data.rooms) ? data.rooms : []);
-const instructorsOf = data => (data && Array.isArray(data.instructors) ? data.instructors : []);
+
+function pickArray(data, candidates) {
+  if (!data || typeof data !== 'object') return [];
+  for (const key of candidates) {
+    if (Array.isArray(data[key])) return data[key];
+  }
+  if (data.data && typeof data.data === 'object') {
+    for (const key of candidates) {
+      if (Array.isArray(data.data[key])) return data.data[key];
+    }
+  }
+  return [];
+}
+
+const schedulesOf = data => (Array.isArray(data) ? data : pickArray(data, ['schedules', 'schedule', 'الجداول', 'الجدول']));
+const coursesLiveOf = data => pickArray(data, ['courses', 'subjects', 'المواد', 'المواد الدراسية']);
+const roomsLiveOf = data => pickArray(data, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
+const instructorsLiveOf = data => pickArray(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
 
 // ---------- الستايل ----------
 function injectStyles() {
@@ -369,7 +383,6 @@ class DashboardView {
     this.onNavigate = onNavigate;
     this.filters = { year: '', dept: '' };
     this.inspection = null;
-    this.cachedData = null;
   }
 
   async mount(container) {
@@ -377,7 +390,7 @@ class DashboardView {
       <div class="db-banner">
         <div>
           <h2 class="db-banner-title">نظام إدارة الجداول الأكاديمية الذكي</h2>
-          <p class="db-banner-sub">لوحة متابعة المواد الدراسية وأعضاء هيئة التدريس والقاعات — تفاعلية ومرتبطة ببيانات الشيت</p>
+          <p class="db-banner-sub">لوحة متابعة المواد الدراسية وأعضاء هيئة التدريس والقاعات — مرتبطة ببيانات Google Sheets</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="dbGoScheduler" class="tt-btn" style="border-color:#fff">عرض الجدول المفلتر</button>
@@ -397,7 +410,7 @@ class DashboardView {
         <button id="dbResetBtn" class="tt-btn" style="margin-right:auto">إعادة ضبط الفلاتر</button>
       </div>
 
-      <div id="dbLoading" class="tt-loading">جاري تحليل بيانات الداش بورد...</div>
+      <div id="dbLoading" class="tt-loading">جاري تحليل بيانات الداش بورد من Google Sheets...</div>
       <div id="dbContent"></div>`;
 
     const ySel = document.getElementById('dbYearSel');
@@ -425,8 +438,8 @@ class DashboardView {
 
   populateFilterOptions(data) {
     const schedules = schedulesOf(data);
-    const courses = coursesOf(data);
-    const faculty = instructorsOf(data);
+    const courses = coursesLiveOf(data);
+    const faculty = instructorsLiveOf(data);
     const years = new Set();
     const depts = new Set();
 
@@ -468,7 +481,6 @@ class DashboardView {
     let data;
     try {
       data = await loadData(this.api, force);
-      this.cachedData = data;
     } finally {
       if (loading) loading.style.display = 'none';
     }
@@ -476,9 +488,9 @@ class DashboardView {
     this.populateFilterOptions(data);
 
     const schedules = schedulesOf(data);
-    const allCourses = coursesOf(data);
-    const allRooms = roomsOf(data);
-    const allFaculty = instructorsOf(data);
+    const allCourses = coursesLiveOf(data);
+    const allRooms = roomsLiveOf(data);
+    const allFaculty = instructorsLiveOf(data);
 
     const filteredCourses = allCourses.filter(c => matchesFilter(c, this.filters));
     const filteredSchedules = schedules.filter(s => matchesFilter(s, this.filters));
@@ -487,7 +499,7 @@ class DashboardView {
       return normAr(getVal(f, FACULTY_DEPT_COLS)).includes(normAr(this.filters.dept));
     });
 
-    const courseSource = filteredCourses.length || this.filters.year || this.filters.dept ? filteredCourses : schedules;
+    const courseSource = filteredCourses.length ? filteredCourses : filteredSchedules;
     const uniqueSubjects = new Set(courseSource.map(c => col(c, 'subject')).filter(Boolean));
     const totalCourses = filteredCourses.length || uniqueSubjects.size;
 
@@ -496,10 +508,12 @@ class DashboardView {
       const n = getVal(f, INSTRUCTOR_COLS);
       if (n) facultyNames.add(n);
     });
-    filteredSchedules.forEach(s => {
-      splitNames(col(s, 'doctor')).forEach(n => facultyNames.add(n));
-      splitNames(col(s, 'assistant')).forEach(n => facultyNames.add(n));
-    });
+    if (!filteredFaculty.length) {
+      filteredSchedules.forEach(s => {
+        splitNames(col(s, 'doctor')).forEach(n => facultyNames.add(n));
+        splitNames(col(s, 'assistant')).forEach(n => facultyNames.add(n));
+      });
+    }
     const totalFaculty = filteredFaculty.length || facultyNames.size;
 
     let totalCapacity = 0;
@@ -740,7 +754,7 @@ class SchedulerView {
     let data;
     try { data = await loadData(this.api, force); } finally { if (loading) loading.style.display = 'none'; }
     this.schedules = schedulesOf(data);
-    this.requests = data.requests || [];
+    this.requests = (data && data.requests) || [];
 
     const years = new Set();
     const depts = new Set();
@@ -748,12 +762,11 @@ class SchedulerView {
     const instructors = new Set();
     const halls = new Set();
 
-    if (data && data.rooms && Array.isArray(data.rooms)) {
-      data.rooms.forEach(r => {
-        const h = getVal(r, ROOM_COLS);
-        if (h) halls.add(h);
-      });
-    }
+    const rooms = roomsLiveOf(data);
+    rooms.forEach(r => {
+      const h = getVal(r, ROOM_COLS);
+      if (h) halls.add(h);
+    });
 
     if (data && data.groups && Array.isArray(data.groups)) {
       data.groups.forEach(g => {
@@ -766,12 +779,10 @@ class SchedulerView {
       });
     }
 
-    if (data && data.instructors && Array.isArray(data.instructors)) {
-      data.instructors.forEach(i => {
-        const n = getVal(i, INSTRUCTOR_COLS);
-        if (n) instructors.add(n);
-      });
-    }
+    instructorsLiveOf(data).forEach(i => {
+      const n = getVal(i, INSTRUCTOR_COLS);
+      if (n) instructors.add(n);
+    });
 
     this.schedules.forEach(it => {
       const y = col(it, 'year');
@@ -916,12 +927,10 @@ class DoctorView {
   async refresh(force = false) {
     const data = await loadData(this.api, force);
     this.schedules = schedulesOf(data);
-    this.requests = data.requests || [];
+    this.requests = (data && data.requests) || [];
 
     const inst = new Set();
-    if (data && data.instructors && Array.isArray(data.instructors)) {
-      data.instructors.forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
-    }
+    instructorsLiveOf(data).forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
     this.schedules.forEach(it => {
       splitNames(col(it, 'doctor')).forEach(n => inst.add(n));
       splitNames(col(it, 'assistant')).forEach(n => inst.add(n));
