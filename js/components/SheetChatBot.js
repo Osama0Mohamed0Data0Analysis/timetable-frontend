@@ -365,3 +365,25 @@ export class SheetChatBot {
     root.querySelectorAll('.scb-qbtn').forEach(function (btn) {
       btn.onclick = function () {
         const qText = btn.dataset.q || '';
+        if (!qText) return;
+        self.messages.push({ role: 'user', text: qText });
+        self.messages.push({ role: 'bot', text: self.answerQuery(qText) });
+        renderMessages();
+      };
+    });
+
+    if (form && input) {
+      form.onsubmit = function (e) {
+        e.preventDefault();
+        const val = input.value.trim();
+        input.value = '';
+        if (!val) return;
+        self.messages.push({ role: 'user', text: val });
+        self.messages.push({ role: 'bot', text: self.answerQuery(val) });
+        renderMessages();
+      };
+    }
+
+    renderMessages();
+  }
+}
