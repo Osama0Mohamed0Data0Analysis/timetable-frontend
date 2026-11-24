@@ -451,4 +451,186 @@ class DoctorView {
 
   async mount(container) {
     container.innerHTML = `
-      <div class="tt-note">وضع تجريبي: اخ
+      <div class="tt-note">وضع تجريبي: اختر اسمك لعرض جدولك وإرسال طلبات الاعتذار.</div>
+      <div class="tt-filters">
+        <div class="tt-field">
+          <label>اختر اسمك</label>
+          <select id="docSelect" class="tt-sel" style="min-width:240px"><option value="">-- اختر الدكتور --</option></select>
+        </div>
+        <div class="tt-field">
+          <label>سبب الاعتذار</label>
+          <select id="reasonSelect" class="tt-sel">
+            <option>ظرف طارئ</option><option>اعتذار عن المحاضرة</option><option>تعديل موعد</option>
+          </select>
+        </div>
+      </div>
+      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="docBody"></tbody></table></div>`;
+
+    const docSelect = document.getElementById('docSelect');
+    if (docSelect) docSelect.onchange = e => { this.selected = e.target.value; this.build(); };
+
+    const reasonSelect = document.getElementById('reasonSelect');
+    if (reasonSelect) reasonSelect.onchange = e => { this.reason = e.target.value; };
+
+    await this.refresh();
+  }
+
+  async refresh(force = false) {
+    const data = await loadData(this.api, force);
+    this.schedules = schedulesOf(data);
+    this.requests = data.requests || [];
+
+    const inst = new Set();
+    if (data && data.instructors && Array.isArray(data.instructors)) {
+      data.instructors.forEach(i => { const n = getVal(i, INSTRUCTOR_COLS); if (n) inst.add(n); });
+    }
+    this.schedules.forEach(it => {
+      splitNames(col(it, 'doctor')).forEach(n => inst.add(n));
+      splitNames(col(it, 'assistant')).forEach(n => inst.add(n));
+    });
+    const list = [...inst].sort((a, b) => a.localeCompare(b, 'ar'));
+
+    const sel = document.getElementById('docSelect');
+    if (sel) {
+      sel.innerHTML = '<option value="">-- اختر الدكتور --</option>';
+      list.forEach(n => sel.appendChild(new Option(n, n)));
+      if (!this.selected && list.length) this.selected = list[0];
+      sel.value = this.selected;
+    }
+    this.build();
+  }
+
+  build() {
+    const tbody = document.getElementById('docBody');
+    if (!tbody) return;
+    const items = this.schedules.filter(it => matchesFilter(it, { instructor: this.selected }));
+
+    const extra = (item, subject) => {
+      const req = this.requests.find(r =>
+        (r.doctorName || r['اسم الدكتور'] || '') === this.selected &&
+        (r.details || r['التفاصيل'] || '').includes(subject));
+      if (req) {
+        const s = req.status || req['الحالة'] || 'قيد المراجعة';
+        const color = s === 'تمت الموافقة' ? '#10b981' : (s === 'مرفوض' ? '#ef4444' : '#d97706');
+        return `<div class="tt-status" style="color:${color}">${esc(s)}</div>`;
+      }
+      return `<button class="tt-apology" data-subject="${esc(subject)}">اعتذار</button>`;
+    };
+
+    renderGrid(tbody, items, { showYear: true, doctorExtra: extra });
+
+    tbody.querySelectorAll('.tt-apology').forEach(btn => {
+      btn.onclick = async e => {
+        const subj = e.currentTarget.dataset.subject;
+        if (!confirm(`هل أنت متأكد من رغبتك في إرسال طلب اعتذار لمادة "${subj}"؟`)) return; await this.api.sendAction({ action: 'addRequest', doctorName: this.selected, details: `اعتذار عن مادة ${subj}`,
+          reason: this.reason,
+        });
+        alert('تم إرسال طلب الاعتذار للمنسق بنجاح!');
+        localStorage.removeItem('sheet_cache_data');
+        await this.refresh(true);
+      };
+    });
+  }
+}
+
+class StudentView {
+  constructor(api) {
+    this.api = api;
+    this.schedules = [];
+    this.year = '';
+    this.group = '';
+  }
+
+  async mount(container) {
+    container.innerHTML = `
+      <div class="tt-note">اختر الفرقة والمجموعة لاستعراض جدولك الدراسي.</div>
+      <div class="tt-filters">
+        <div class="tt-field">
+          <label>الفرقة الدراسية</label>
+          <select id="stYear" class="tt-sel"></select>
+        </div>
+        <div class="tt-field">
+          <label>المجموعة</label>
+          <select id="stGroup" class="tt-sel" style="min-width:200px"></select>
+        </div>
+      </div>
+      <div class="tt-banner">جدولك محدّث. مفيش تغييرات.</div>
+      <div class="tt-wrap"><table class="tt-table">${TABLE_HEAD}<tbody id="stBody"></tbody></table></div>`;
+
+    const stYear = document.getElementById('stYear');
+    if (stYear) stYear.onchange = e => {
+      this.year = e.target.value;
+      this.build();
+    };
+
+    const stGroup = document.getElementById('stGroup');
+    if (stGroup) stGroup.onchange = e => {
+      this.group = e.target.value;
+      this.build();
+    };
+
+    await this.refresh();
+  }
+
+  async refresh() {
+    const data = await loadData(this.api);
+    this.schedules = schedulesOf(data);
+
+    const years = new Set();
+    const groups = new Set();
+    if (data && data.groups && Array.isArray(data.groups)) {
+      data.groups.forEach(g => {
+        if (g['الفرقة']) years.add(g['الفرقة'].toString().trim());
+        if (g['المجموعة']) groups.add(g['المجموعة'].toString().trim());
+      });
+    }
+    this.schedules.forEach(it => {
+      const y = col(it, 'year');
+      const g = col(it, 'group') || col(it, 'dept');
+      if (y) years.add(y);
+      if (g) groups.add(g);
+    });
+
+    const yList = sortYears([...years]);
+    const gList = [...groups].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}));
+
+    const ySel = document.getElementById('stYear');
+    if (ySel) {
+      ySel.innerHTML = '';
+      yList.forEach(y => ySel.appendChild(new Option(y, y)));
+      if (!this.year || !yList.includes(this.year)) this.year = yList[0] || '';
+      ySel.value = this.year;
+    }
+
+    const gSel = document.getElementById('stGroup');
+    if (gSel) {
+      gSel.innerHTML = '<option value="">-- كل المجموعات --</option>';
+      gList.forEach(g => gSel.appendChild(new Option(g, g)));
+      if (!this.group || !gList.includes(this.group)) this.group = '';
+      gSel.value = this.group;
+    }
+
+    this.build();
+  }
+
+  build() {
+    const tbody = document.getElementById('stBody');
+    if (!tbody) return;
+    const items = this.schedules.filter(it => matchesFilter(it, { year: this.year, group: this.group }));
+    renderGrid(tbody, items);
+  }
+}
+
+export class App {
+  constructor(container, api) {
+    this.container = container;
+    this.api = api;
+  }
+
+  async start() {
+    injectStyles();
+    this.container.innerHTML = `
+      <div class="tt">
+        <div class="tt-nav">
+          <button id="navDashboard" class="tt-btn">الداش بورد</button>
+          <button id="navScheduler" class="tt
