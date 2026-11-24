@@ -10,9 +10,12 @@ function esc(s) {
 function normAr(s) {
   return String(s ?? '')
     .replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)); })
+    .replace(/[\u064B-\u065F\u0670]/g, '')
     .replace(/[أإآ]/g, 'ا')
     .replace(/ى/g, 'ي')
     .replace(/ة/g, 'ه')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
@@ -25,67 +28,105 @@ function toNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function getVal(item, keys) {
-  if (!item || typeof item !== 'object') return '';
-  const objKeys = Object.keys(item);
-  for (let i = 0; i < keys.length; i++) {
-    const pk = keys[i];
-    for (let j = 0; j < objKeys.length; j++) {
-      const k = objKeys[j];
-      if (k.trim() === pk.trim()) {
-        const v = item[k];
-        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
-      }
+function stemWord(w) {
+  let s = normAr(w).replace(/[^\p{L}\p{N}_-]+/gu, '');
+  if (s.length > 3 && s.indexOf('ال') === 0) {
+    s = s.slice(2);
+  }
+  if (s.length > 4 && (s.indexOf('لل') === 0 || s.indexOf('بال') === 0 || s.indexOf('كال') === 0)) {
+    s = s.slice(3);
+  }
+  return s;
+}
+
+function extractQueryTerms(rawQuery) {
+  const stop = new Set([
+    'ما', 'ماذا', 'متي', 'اين', 'كيف', 'لماذا', 'هل', 'كم', 'من', 'في', 'عن', 'علي', 'الي',
+    'بكام', 'ايه', 'اللي', 'التي', 'الذي', 'الذين', 'ده', 'دي', 'دول', 'كل', 'جميع', 'بيانات',
+    'معلومات', 'داتا', 'شيت', 'جدول', 'لو', 'سمحت', 'عايز', 'اعرف', 'هات', 'قولي', 'قلي',
+    'ممكن', 'بتاع', 'بتاعه', 'بتاعت', 'الخاصه', 'الخاص', 'المتعلقه', 'المتعلق', 'بخصوص'
+  ]);
+  const parts = normAr(rawQuery).split(/[\s،,؟?!:؛()\[\]"'\/\\-]+/).filter(Boolean);
+  const terms = new Set();
+  parts.forEach(function (p) {
+    if (stop.has(p)) return;
+    if (p.length >= 2 || /^\d+$/.test(p)) terms.add(p);
+    const st = stemWord(p);
+    if (st && (st.length >= 2 || /^\d+$/.test(st))) terms.add(st);
+  });
+  return Array.from(terms);
+}
+
+function flattenSheetData(data) {
+  const records = [];
+  if (!data || typeof data !== 'object') return records;
+
+  const sourcesToScan = [];
+  const rootObj = Array.isArray(data) ? { schedules: data } : data;
+
+  Object.keys(rootObj).forEach(function (key) {
+    const val = rootObj[key];
+    if (Array.isArray(val)) {
+      sourcesToScan.push({ tab: key, rows: val });
+    } else if (val && typeof val === 'object') {
+      Object.keys(val).forEach(function (subKey) {
+        if (Array.isArray(val[subKey])) {
+          sourcesToScan.push({ tab: subKey, rows: val[subKey] });
+        }
+      });
     }
-  }
-  for (let i = 0; i < keys.length; i++) {
-    const pk = keys[i];
-    for (let j = 0; j < objKeys.length; j++) {
-      const k = objKeys[j];
-      const lk = normAr(k);
-      const lpk = normAr(pk);
-      if (lpk && lk.indexOf(lpk) !== -1) {
-        if (lpk.indexOf('ماده') !== -1 && lk.indexOf('كود') !== -1) continue;
-        const v = item[k];
-        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
-      }
-    }
-  }
-  return '';
+  });
+
+  sourcesToScan.forEach(function (src) {
+    const tabLabel = src.tab;
+    src.rows.forEach(function (row, idx) {
+      if (!row || typeof row !== 'object') return;
+      const entries = [];
+      let rowNumSum = 0;
+      Object.keys(row).forEach(function (k) {
+        const cleanKey = String(k || '').trim();
+        const rawVal = row[k];
+        if (rawVal === undefined || rawVal === null) return;
+        const valStr = String(rawVal).trim();
+        if (!valStr || valStr === 'NaN' || valStr === 'null' || valStr === 'undefined') return;
+        entries.push({ key: cleanKey, value: valStr });
+        const num = toNum(valStr);
+        if (num > 0 && /سع|ساع|عدد|طلاب|فتر|رقم|مجموع/i.test(cleanKey)) {
+          rowNumSum += num;
+        }
+      });
+      if (!entries.length) return;
+
+      const fullText = normAr(
+        tabLabel + ' ' + entries.map(function (e) { return e.key + ' ' + e.value; }).join(' ')
+      );
+      const stemmedText = normAr(
+        fullText.split(/\s+/).map(stemWord).join(' ')
+      );
+
+      records.push({
+        tab: tabLabel,
+        rowIndex: idx + 1,
+        entries: entries,
+        fullText: fullText,
+        stemmedText: stemmedText,
+        rowNumSum: rowNumSum
+      });
+    });
+  });
+
+  return records;
 }
 
-function pickArr(data, keys) {
-  if (!data || typeof data !== 'object') return [];
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i];
-    if (Array.isArray(data[k])) return data[k];
-  }
-  if (data.data && typeof data.data === 'object') {
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (Array.isArray(data.data[k])) return data.data[k];
-    }
-  }
-  return [];
-}
-
-function splitNames(s) {
-  return String(s || '')
-    .split(/[,،]/)
-    .map(function (x) { return x.trim(); })
-    .filter(Boolean);
-}
-
-function itemMatchesTokens(item, tokens) {
-  if (!item || typeof item !== 'object' || !tokens.length) return false;
-  const hay = normAr(Object.values(item).map(function (v) { return v == null ? '' : String(v); }).join(' | '));
-  return tokens.every(function (tok) { return hay.indexOf(tok) !== -1; });
-}
-
-function itemMatchesAnyToken(item, tokens) {
-  if (!item || typeof item !== 'object' || !tokens.length) return false;
-  const hay = normAr(Object.values(item).map(function (v) { return v == null ? '' : String(v); }).join(' | '));
-  return tokens.some(function (tok) { return tok.length >= 2 && hay.indexOf(tok) !== -1; });
+function formatRecordLine(rec) {
+  const parts = rec.entries
+    .filter(function (e) { return e.key.indexOf('Unnamed') !== 0; })
+    .slice(0, 7)
+    .map(function (e) {
+      const k = e.key.replace(/\s*\*\s*$/, '').trim();
+      return (k ? k + ': ' : '') + e.value;
+    });
+  return '• [' + rec.tab + '] ' + parts.join(' | ');
 }
 
 export class SheetChatBot {
@@ -95,7 +136,7 @@ export class SheetChatBot {
     this.messages = [
       {
         role: 'bot',
-        text: 'أهلاً بك! أنا متصل مباشرة ببيانات Google Sheets. اسألني أي سؤال عن المواد، الدكاترة والمعيدين، القاعات والسعات، المجموعات، الفترات الزمنية، قواعد الكلية، أو ملاحظات المراجعة.'
+        text: 'أهلاً بك! أنا متصل ببيانات Google Sheets بالكامل وأفهم أي صيغة سؤال (عربي أو إنجليزي، أرقام أو أسماء أو استفسارات عامة). اسألني بحرية.'
       }
     ];
   }
@@ -106,7 +147,7 @@ export class SheetChatBot {
     st.id = 'scb-styles';
     st.textContent = [
       '.scb-fab{position:fixed;bottom:22px;left:22px;z-index:9999;background:#0f3566;color:#fff;border:2px solid #f59e0b;border-radius:999px;padding:12px 18px;font:inherit;font-weight:700;font-size:.9rem;cursor:pointer;box-shadow:0 8px 24px rgba(15,23,42,.22);display:flex;align-items:center;gap:8px}',
-      '.scb-panel{position:fixed;bottom:78px;left:22px;z-index:9999;width:min(420px,calc(100vw - 32px));max-height:74vh;background:#fff;border:1.5px solid #cbd5e1;border-radius:14px;box-shadow:0 16px 36px rgba(15,23,42,.24);display:flex;flex-direction:column;overflow:hidden;direction:rtl;text-align:right}',
+      '.scb-panel{position:fixed;bottom:78px;left:22px;z-index:9999;width:min(430px,calc(100vw - 32px));max-height:76vh;background:#fff;border:1.5px solid #cbd5e1;border-radius:14px;box-shadow:0 16px 36px rgba(15,23,42,.24);display:flex;flex-direction:column;overflow:hidden;direction:rtl;text-align:right}',
       '.scb-head{background:linear-gradient(135deg,#071b38 0%,#0f3566 100%);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px}',
       '.scb-title{margin:0;font-size:.96rem;font-weight:800}',
       '.scb-hbtns{display:flex;gap:6px;align-items:center}',
@@ -114,7 +155,7 @@ export class SheetChatBot {
       '.scb-quick{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}',
       '.scb-qbtn{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:999px;padding:4px 10px;font:inherit;font-size:.75rem;font-weight:600;cursor:pointer}',
       '.scb-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#f1f5f9}',
-      '.scb-msg{max-width:92%;padding:9px 12px;border-radius:10px;font-size:.84rem;line-height:1.55;white-space:pre-line}',
+      '.scb-msg{max-width:93%;padding:9px 12px;border-radius:10px;font-size:.84rem;line-height:1.58;white-space:pre-line}',
       '.scb-msg.bot{background:#fff;color:#0f172a;border:1px solid #dbe2ee;align-self:flex-start}',
       '.scb-msg.user{background:#1e3a8a;color:#fff;align-self:flex-end}',
       '.scb-form{display:flex;gap:8px;padding:10px;background:#fff;border-top:1px solid #e2e8f0}',
@@ -146,7 +187,7 @@ export class SheetChatBot {
           return fresh;
         }
       } catch (err) {
-        console.error('ChatBot live fetch failed:', err);
+        console.error('ChatBot fetchLiveSheetData error:', err);
       }
     }
 
@@ -158,201 +199,96 @@ export class SheetChatBot {
     return {};
   }
 
-  extractMeaningfulTokens(query) {
-    const stopWords = ['ما', 'هو', 'هي', 'ماهي', 'ماهو', 'كم', 'عدد', 'اين', 'أين', 'متى', 'من', 'في', 'عن', 'على', 'إلى', 'الى', 'هل', 'بكام', 'ايه', 'اللي', 'التي', 'الذي', 'كل', 'جميع', 'بيانات', 'معلومات', 'جدول', 'شيت'];
-    return normAr(query)
-      .replace(/[؟?!.,،:؛()\[\]"]/g, ' ')
-      .split(/\s+/)
-      .map(function (w) { return w.trim(); })
-      .filter(function (w) { return w.length >= 2 && stopWords.indexOf(w) === -1; });
-  }
-
   async answerQuery(rawQuery, forceRefresh) {
-    const q = normAr(rawQuery);
-    if (!q) return 'من فضلك اكتب سؤالك أولاً.';
+    const cleanQ = String(rawQuery || '').trim();
+    if (!cleanQ) return 'من فضلك اكتب استفسارك.';
 
     const data = await this.fetchLiveSheetData(Boolean(forceRefresh));
-    const courses = pickArr(data, ['courses', 'subjects', 'materials', 'المواد', 'المواد الدراسية']);
-    const faculty = pickArr(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
-    const rooms = pickArr(data, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
-    const schedules = Array.isArray(data) ? data : pickArr(data, ['schedules', 'schedule', 'الجداول']);
-    const groups = pickArr(data, ['groups', 'الفرق والمجموعات']);
-    const periods = pickArr(data, ['periods', 'timeSlots', 'الفترات الزمنية', 'الفترات']);
-    const rules = pickArr(data, ['rules', 'collegeRules', 'قواعد الكلية']);
-    const notes = pickArr(data, ['notes', 'reviewNotes', 'ملاحظات المراجعة', 'ملاحظات']);
+    const records = flattenSheetData(data);
 
-    const tokens = this.extractMeaningfulTokens(rawQuery);
-    const searchTerms = tokens.length ? tokens : [q];
-    const isCountAsk = q.indexOf('كم') !== -1 || q.indexOf('عدد') !== -1 || q.indexOf('اجمالي') !== -1 || q.indexOf('إجمالي') !== -1;
-
-    const lines = [];
-
-    if (isCountAsk && (q.indexOf('ماد') !== -1 || q.indexOf('مقرر') !== -1)) {
-      const matchedC = itemMatchesAnyToken(courses[0] || {}, searchTerms) ? courses.filter(function (c) { return itemMatchesAnyToken(c, searchTerms); }) : courses;
-      const lecHrs = matchedC.reduce(function (s, c) { return s + toNum(getVal(c, ['ساعات المحاضرة أسبوعياً *', 'ساعات المحاضرة أسبوعياً'])); }, 0);
-      const secHrs = matchedC.reduce(function (s, c) { return s + toNum(getVal(c, ['ساعات السكشن أسبوعياً', 'ساعات السكاشن أسبوعياً'])); }, 0);
-      lines.push('عدد صفوف المواد: ' + matchedC.length + ' (إجمالي المواد الكلي: ' + courses.length + ')');
-      lines.push('إجمالي ساعات المحاضرات: ' + lecHrs + ' ساعة | إجمالي ساعات السكاشن: ' + secHrs + ' ساعة');
+    if (!records.length) {
+      return 'لا توجد سجلات محمّلة من Google Sheets حالياً. اضغط على زر «تحديث الداتا» وتأكد من اتصال الـ API.';
     }
 
-    if (isCountAsk && (q.indexOf('دكتور') !== -1 || q.indexOf('معيد') !== -1 || q.indexOf('هيئه') !== -1 || q.indexOf('تدريس') !== -1)) {
-      lines.push('إجمالي أعضاء هيئة التدريس والمعيدين في الشيت: ' + faculty.length);
-    }
+    const terms = extractQueryTerms(cleanQ);
+    const qNorm = normAr(cleanQ);
+    const wantsSummaryOrCount = /كم|عدد|اجمالي|إجمالي|ملخص|احصائ|إحصائ|مجموع|سعه|ساعات/i.test(qNorm);
 
-    if (isCountAsk && (q.indexOf('قاع') !== -1 || q.indexOf('مدرج') !== -1 || q.indexOf('معمل') !== -1 || q.indexOf('سع') !== -1)) {
-      const capSum = rooms.reduce(function (s, r) { return s + toNum(getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity'])); }, 0);
-      lines.push('إجمالي القاعات/الأماكن: ' + rooms.length + ' | إجمالي السعة: ' + capSum.toLocaleString('en-US') + ' طالب');
-    }
-
-    if (q.indexOf('قواعد') !== -1 || q.indexOf('قاعده') !== -1 || q.indexOf('عام اكاديمي') !== -1 || q.indexOf('فصل دراسي') !== -1) {
-      const rMatches = rules.filter(function (r) { return itemMatchesAnyToken(r, searchTerms); });
-      const targetRules = rMatches.length ? rMatches : rules;
-      if (targetRules.length) {
-        lines.push('قواعد الكلية (' + targetRules.length + '):');
-        targetRules.slice(0, 10).forEach(function (r) {
-          const b = getVal(r, ['البند', 'item', 'rule', 'name', 'title']) || 'بند';
-          const v = getVal(r, ['القيمة', 'value', 'val', 'desc']) || '-';
-          const src = getVal(r, ['المصدر / ملاحظات', 'المصدر', 'source']);
-          lines.push('• ' + b + ': ' + v + (src ? ' (' + src + ')' : ''));
-        });
+    const scored = records.map(function (rec) {
+      let score = 0;
+      if (qNorm.length >= 2 && rec.fullText.indexOf(qNorm) !== -1) {
+        score += 12;
       }
-    }
-
-    if (q.indexOf('ملاحظ') !== -1 || q.indexOf('مراجعه') !== -1 || q.indexOf('تنبيه') !== -1) {
-      const nMatches = notes.filter(function (n) { return itemMatchesAnyToken(n, searchTerms); });
-      const targetNotes = nMatches.length ? nMatches : notes;
-      if (targetNotes.length) {
-        lines.push('ملاحظات المراجعة (' + targetNotes.length + '):');
-        targetNotes.slice(0, 10).forEach(function (n) {
-          const t = getVal(n, ['الموضوع', 'topic', 'title', 'subject']) || 'ملاحظة';
-          const d = getVal(n, ['التفاصيل', 'details', 'detail', 'note', 'ملاحظات']) || '';
-          const src = getVal(n, ['المصدر', 'source']);
-          lines.push('• ' + t + (src ? ' [' + src + ']' : '') + ': ' + d);
-        });
+      let matchedCount = 0;
+      terms.forEach(function (t) {
+        const st = stemWord(t);
+        const inFull = rec.fullText.indexOf(t) !== -1;
+        const inStem = st && rec.stemmedText.indexOf(st) !== -1;
+        if (inFull) {
+          score += 4;
+          matchedCount += 1;
+        } else if (inStem) {
+          score += 2.5;
+          matchedCount += 1;
+        }
+      });
+      if (terms.length > 1 && matchedCount === terms.length) {
+        score += 6;
       }
-    }
+      return { rec: rec, score: score, matchedCount: matchedCount };
+    }).filter(function (x) { return x.score > 0; })
+      .sort(function (a, b) { return b.score - a.score || b.matchedCount - a.matchedCount; });
 
-    if (q.indexOf('فتر') !== -1 || q.indexOf('وقت') !== -1 || q.indexOf('مواعيد') !== -1 || q.indexOf('يوم') !== -1) {
-      const pMatches = periods.filter(function (p) { return itemMatchesAnyToken(p, searchTerms); });
-      const targetPeriods = pMatches.length ? pMatches : periods;
-      if (targetPeriods.length) {
-        lines.push('الفترات الزمنية (' + targetPeriods.length + '):');
-        targetPeriods.slice(0, 10).forEach(function (p) {
-          const day = getVal(p, ['أيام الدراسة *', 'أيام الدراسة', 'اليوم', 'day']);
-          const num = getVal(p, ['رقم الفترة *', 'رقم الفترة', 'period']);
-          const st = getVal(p, ['بداية الفترة *', 'بداية الفترة', 'start']);
-          const en = getVal(p, ['نهاية الفترة *', 'نهاية الفترة', 'end']);
-          lines.push('• ' + [day, num ? 'فترة ' + num : '', (st || en) ? (st + ' - ' + en) : ''].filter(Boolean).join(' | '));
-        });
-      }
-    }
-
-    const fMatches = faculty.filter(function (f) {
-      return itemMatchesTokens(f, tokens) || itemMatchesAnyToken(f, searchTerms);
-    });
-    if (fMatches.length) {
-      lines.push('أعضاء هيئة التدريس المطابقون (' + fMatches.length + '):');
-      fMatches.slice(0, 8).forEach(function (f) {
-        const name = getVal(f, ['اسم الدكتور / المعيد *', 'اسم الدكتور / المعيد', 'name']) || 'عضو';
-        const role = getVal(f, ['الدرجة الوظيفية *', 'الدرجة الوظيفية', 'role']) || '-';
-        const dept = getVal(f, ['القسم *', 'القسم', 'department']) || '-';
-        const note = getVal(f, ['ملاحظات', 'notes']) || '';
-        const relatedCourses = courses.filter(function (c) {
-          const names = splitNames(getVal(c, ['د. المحاضرة *', 'د. المحاضرة', 'doctor'])).concat(
-            splitNames(getVal(c, ['المعيدين / السكاشن', 'assistant']))
-          );
-          return names.some(function (n) {
-            const nn = normAr(n);
-            const nm = normAr(name);
-            return nn.indexOf(nm) !== -1 || nm.indexOf(nn) !== -1;
-          });
-        }).map(function (c) { return getVal(c, ['اسم المادة *', 'اسم المادة', 'subject']); }).filter(Boolean);
-
-        lines.push(
-          '• ' + name + ' | الدرجة: ' + role + ' | القسم: ' + dept +
-          (note ? ' | ' + note : '') +
-          (relatedCourses.length ? ' | مواد بالجدول: ' + Array.from(new Set(relatedCourses)).join('، ') : '')
-        );
+    if (!scored.length) {
+      const tabCounts = new Map();
+      records.forEach(function (r) {
+        tabCounts.set(r.tab, (tabCounts.get(r.tab) || 0) + 1);
       });
-    }
+      const tabSummary = Array.from(tabCounts.entries()).map(function (e) {
+        return '• ' + e[0] + ': ' + e[1] + ' سجل';
+      }).join('\n');
 
-    const rMatches = rooms.filter(function (r) {
-      return itemMatchesTokens(r, tokens) || itemMatchesAnyToken(r, searchTerms);
-    });
-    if (rMatches.length) {
-      lines.push('القاعات / الأماكن المطابقة (' + rMatches.length + '):');
-      rMatches.slice(0, 8).forEach(function (r) {
-        const num = getVal(r, ['رقم القاعة', 'اسم القاعة', 'hall', 'room']) || '-';
-        const typ = getVal(r, ['* النوع', 'النوع', 'type']) || '-';
-        const cap = getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity']) || '-';
-        const bld = getVal(r, ['* المبنى', 'المبنى', 'building']) || '-';
-        const flr = getVal(r, ['* الدور', 'الدور', 'floor']) || '-';
-        lines.push('• ' + typ + ' ' + num + ' | السعة: ' + cap + ' | ' + bld + ' (' + flr + ')');
-      });
-    }
-
-    const cMatches = courses.filter(function (c) {
-      return itemMatchesTokens(c, tokens) || itemMatchesAnyToken(c, searchTerms);
-    });
-    if (cMatches.length) {
-      lines.push('المواد المطابقة (' + cMatches.length + '):');
-      cMatches.slice(0, 8).forEach(function (c) {
-        const subj = getVal(c, ['اسم المادة *', 'اسم المادة', 'subject']) || 'مادة';
-        const yr = getVal(c, ['الفرقة *', 'الفرقة', 'yearLevel']) || '-';
-        const dp = getVal(c, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || '-';
-        const doc = getVal(c, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || '-';
-        const ast = getVal(c, ['المعيدين / السكاشن', 'assistant']) || '-';
-        const lh = getVal(c, ['ساعات المحاضرة أسبوعياً *', 'ساعات المحاضرة أسبوعياً']) || '0';
-        const sh = getVal(c, ['ساعات السكشن أسبوعياً', 'ساعات السكاشن أسبوعياً']) || '0';
-        const rt = getVal(c, ['نوع القاعة المطلوبة *', 'نوع القاعة المطلوبة']) || '-';
-        lines.push('• ' + subj + ' (' + yr + ' - ' + dp + ') | محاضرة: ' + lh + 'س، سكشن: ' + sh + 'س | قاعة مطلوبة: ' + rt + ' | د. ' + doc + (ast !== '-' ? ' | معيد: ' + ast : ''));
-      });
-    }
-
-    const gMatches = groups.filter(function (g) {
-      return itemMatchesTokens(g, tokens) || itemMatchesAnyToken(g, searchTerms);
-    });
-    if (gMatches.length && (q.indexOf('مجموع') !== -1 || q.indexOf('فرق') !== -1 || q.indexOf('طلاب') !== -1 || !lines.length)) {
-      lines.push('الفرق والمجموعات المطابقة (' + gMatches.length + '):');
-      gMatches.slice(0, 8).forEach(function (g) {
-        const gy = getVal(g, ['الفرقة', 'yearLevel']) || '-';
-        const gd = getVal(g, ['البرنامج / الشعبة', 'القسم', 'department']) || '-';
-        const gn = getVal(g, ['المجموعة', 'group']) || '-';
-        const st = getVal(g, ['عدد الطلاب', 'students']) || '-';
-        const nt = getVal(g, ['ملاحظات', 'notes']) || '';
-        lines.push('• ' + gy + ' - ' + gd + ' - مجموعة ' + gn + (st !== '-' ? ' (' + st + ' طالب)' : '') + (nt ? ' | ' + nt : ''));
-      });
-    }
-
-    const sMatches = schedules.filter(function (s) {
-      return itemMatchesTokens(s, tokens) || itemMatchesAnyToken(s, searchTerms);
-    });
-    if (sMatches.length && (q.indexOf('جدول') !== -1 || q.indexOf('حص') !== -1 || !lines.length)) {
-      lines.push('الحصص المجدولة المطابقة (' + sMatches.length + '):');
-      sMatches.slice(0, 6).forEach(function (s) {
-        const subj = getVal(s, ['اسم المادة *', 'اسم المادة', 'subject']) || 'حصة';
-        const day = getVal(s, ['اليوم', 'day']) || '';
-        const tm = getVal(s, ['وقت البداية', 'الوقت', 'timeSlot', 'time']) || '';
-        const hl = getVal(s, ['القاعة', 'رقم القاعة', 'hall']) || '';
-        const yr = getVal(s, ['الفرقة *', 'الفرقة', 'yearLevel']) || '';
-        lines.push('• ' + subj + (yr ? ' (' + yr + ')' : '') + (day ? ' | ' + day : '') + (tm ? ' | ' + tm : '') + (hl ? ' | قاعة: ' + hl : ''));
-      });
-    }
-
-    if (!lines.length) {
       return (
-        'لم أجد تطابقاً مباشراً لاستفسارك في الداتا الحالية للشيت.\n' +
-        'ملخص ما هو متاح حالياً: ' +
-        courses.length + ' صف مادة، ' +
-        faculty.length + ' عضو هيئة تدريس، ' +
-        rooms.length + ' قاعة/مكان، ' +
-        groups.length + ' مجموعة، ' +
-        periods.length + ' فترة، ' +
-        schedules.length + ' حصة مجدولة.'
+        'المعلومة المطلوبة غير ظاهرة في السجلات الحالية لـ Google Sheets.\n' +
+        'المصادر والسجلات المتوفرة حالياً:\n' +
+        tabSummary
       );
     }
 
-    return lines.join('\n');
+    const topMatches = scored.slice(0, 10).map(function (x) { return x.rec; });
+    const out = [];
+
+    if (wantsSummaryOrCount) {
+      const byTab = new Map();
+      scored.forEach(function (x) {
+        byTab.set(x.rec.tab, (byTab.get(x.rec.tab) || 0) + 1);
+      });
+      const breakdown = Array.from(byTab.entries()).map(function (e) {
+        return e[0] + ': ' + e[1];
+      }).join(' | ');
+
+      let numericTotal = 0;
+      scored.forEach(function (x) {
+        x.rec.entries.forEach(function (e) {
+          if (/سع|ساع|طلاب|عدد/i.test(e.key)) {
+            numericTotal += toNum(e.value);
+          }
+        });
+      });
+
+      out.push(
+        'عدد السجلات المطابقة: ' + scored.length + (breakdown ? ' (' + breakdown + ')' : '') +
+        (numericTotal > 0 ? '\nمجموع القيم الرقمية المرتبطة (سعات/ساعات/طلاب): ' + numericTotal.toLocaleString('en-US') : '')
+      );
+    } else {
+      out.push('النتائج المطابقة من Google Sheets (' + scored.length + ' سجل — عرض أبرز ' + topMatches.length + '):');
+    }
+
+    topMatches.forEach(function (rec) {
+      out.push(formatRecordLine(rec));
+    });
+
+    return out.join('\n');
   }
 
   mount(parentContainer) {
@@ -373,15 +309,14 @@ export class SheetChatBot {
       '</div>' +
       '</div>' +
       '<div class="scb-quick">' +
-      '<button class="scb-qbtn" data-q="كم عدد المواد وإجمالي الساعات؟" type="button">عدد المواد والساعات</button>' +
-      '<button class="scb-qbtn" data-q="قواعد الكلية" type="button">قواعد الكلية</button>' +
-      '<button class="scb-qbtn" data-q="ملاحظات المراجعة" type="button">ملاحظات المراجعة</button>' +
-      '<button class="scb-qbtn" data-q="الفترات الزمنية" type="button">الفترات الزمنية</button>' +
-      '<button class="scb-qbtn" data-q="المدرجات والقاعات" type="button">القاعات والمدرجات</button>' +
+      '<button class="scb-qbtn" data-q="كم عدد المواد والساعات؟" type="button">المواد والساعات</button>' +
+      '<button class="scb-qbtn" data-q="إيه قواعد الكلية؟" type="button">قواعد الكلية</button>' +
+      '<button class="scb-qbtn" data-q="إيه ملاحظات المراجعة؟" type="button">ملاحظات المراجعة</button>' +
+      '<button class="scb-qbtn" data-q="سعات القاعات والمدرجات" type="button">القاعات والسعات</button>' +
       '</div>' +
       '<div id="scbMsgs" class="scb-msgs"></div>' +
       '<form id="scbForm" class="scb-form">' +
-      '<input id="scbInput" class="scb-input" type="text" placeholder="اسأل أي سؤال عن بيانات الشيت..." autocomplete="off" />' +
+      '<input id="scbInput" class="scb-input" type="text" placeholder="اكتب سؤالك بأي صيغة..." autocomplete="off" />' +
       '<button class="scb-send" type="submit">إرسال</button>' +
       '</form>' +
       '</div>';
@@ -408,7 +343,7 @@ export class SheetChatBot {
       const clean = String(text || '').trim();
       if (!clean) return;
       self.messages.push({ role: 'user', text: clean });
-      self.messages.push({ role: 'bot', text: 'جاري قراءة البيانات من Google Sheets...' });
+      self.messages.push({ role: 'bot', text: 'جاري البحث في بيانات Google Sheets...' });
       renderMessages();
 
       const reply = await self.answerQuery(clean, Boolean(forceRefresh));
@@ -431,7 +366,7 @@ export class SheetChatBot {
     if (syncBtn) {
       syncBtn.onclick = async function () {
         await self.fetchLiveSheetData(true);
-        self.messages.push({ role: 'bot', text: 'تم تحديث الداتا مباشرة من Google Sheets بنجاح. اسألني الآن!' });
+        self.messages.push({ role: 'bot', text: 'تمت مزامنة الداتا مباشرة من Google Sheets.' });
         renderMessages();
       };
     }
