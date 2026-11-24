@@ -1,6 +1,16 @@
 import { SheetChatBot } from './components/SheetChatBot.js';
 import { DashboardView } from './views/DashboardView.js';
 
+
+const styleManager = new StyleManager({ sidebarWidth: '196px' });
+styleManager.inject();
+const drawer = styleManager.bindDrawer();
+
+// داخل نقر أزرار التنقل:
+drawer.close();
+
+
+
 export const COLS = {
   id: ['id', 'ID', 'رقم', 'م'],
   year: ['yearLevel', 'الفرقة *', 'الفرقة', 'المستوى', 'السنة'],
