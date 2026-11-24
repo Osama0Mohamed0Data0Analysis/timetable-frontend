@@ -1,7 +1,7 @@
-import { DashboardView } from './js/views/DashboardView.js';
-import { SchedulerView } from './js/views/SchedulerView.js';
-import { DoctorView } from './js/views/DoctorView.js';
-import { StudentView } from './js/views/StudentView.js';
+import { DashboardView } from './views/DashboardView.js';
+import { SchedulerView } from './views/SchedulerView.js';
+import { DoctorView } from './views/DoctorView.js';
+import { StudentView } from './views/StudentView.js';
 
 export class App {
   constructor(container, api) {
