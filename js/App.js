@@ -101,6 +101,25 @@ export function col(item, field) {
   return getVal(item, keys);
 }
 
+export function toNum(v) {
+  if (v === undefined || v === null) return 0;
+  const n = parseFloat(normAr(v).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function pickArray(data, keys) {
+  if (!data || typeof data !== 'object') return [];
+  for (const k of keys) {
+    if (Array.isArray(data[k])) return data[k];
+  }
+  if (data.data && typeof data.data === 'object') {
+    for (const k of keys) {
+      if (Array.isArray(data.data[k])) return data.data[k];
+    }
+  }
+  return [];
+}
+
 export function slotLabel(item) {
   const direct = col(item, 'slot');
   if (direct) return direct;
@@ -232,15 +251,29 @@ export function injectStyles() {
     .sada-mobile-bar{display:none;align-items:center;justify-content:space-between;padding:10px 14px;background:#0c2858;color:#fff;position:sticky;top:0;z-index:150;box-shadow:0 2px 10px rgba(0,0,0,.12)}
     .sada-mobile-brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:.95rem}
     .sada-mobile-toggle{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:8px;padding:6px 12px;font:inherit;font-size:.85rem;font-weight:700;cursor:pointer}
-    .sada-content{flex:1;padding:18px 20px 36px;max-width:100%}
+    .sada-content{flex:1;padding:18px 20px 44px;max-width:100%}
     .sada-backdrop{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:190}
-    .sada-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px}
-    .sada-stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-    .sada-stat-label{color:#64748b;font-size:.82rem;font-weight:600;margin-bottom:6px}
-    .sada-stat-val{color:#0f172a;font-size:1.45rem;font-weight:800}
-    .sada-quick-actions{display:flex;gap:10px;flex-wrap:wrap}
-    .sada-action-btn{padding:10px 16px;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;font:inherit;font-size:.86rem;font-weight:700;cursor:pointer}
-    .sada-action-btn:hover{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
+    .dash-wrap{display:flex;flex-direction:column;gap:18px}
+    .dash-top{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}
+    .dash-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}
+    .dash-kpi{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px}
+    .dash-kpi-lbl{font-size:.78rem;color:#64748b;font-weight:600}
+    .dash-kpi-num{font-size:1.35rem;font-weight:800;color:#0f172a;margin-top:4px}
+    .dash-kpi-sub{font-size:.74rem;color:#475569;margin-top:2px}
+    .dash-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+    .dash-box{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px}
+    .dash-box-title{margin:0 0 12px;font-size:.98rem;font-weight:800;color:#0f172a;border-bottom:1px solid #f1f5f9;padding-bottom:8px}
+    .dash-bar-row{margin-bottom:10px}
+    .dash-bar-head{display:flex;justify-content:space-between;font-size:.82rem;font-weight:600;color:#334155;margin-bottom:4px}
+    .dash-bar-track{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+    .dash-bar-fill{height:100%;background:#1d4ed8;border-radius:999px}
+    .dash-tbl{width:100%;border-collapse:collapse;font-size:.82rem}
+    .dash-tbl th,.dash-tbl td{border:1px solid #e2e8f0;padding:7px 10px;text-align:right}
+    .dash-tbl th{background:#f8fafc;color:#334155;font-weight:700}
+    .dash-filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .dash-sel{padding:7px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font:inherit;font-size:.84rem;color:#0f172a}
+    .dash-btn{padding:8px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;font:inherit;font-size:.82rem;font-weight:700;cursor:pointer}
+    .dash-btn.primary{background:#0f3566;color:#fff;border-color:#0f3566}
     .tt-loading{padding:24px;text-align:center;color:#475569;font-weight:600}
     .tt-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
     .tt-subj{font-weight:700;color:#0f172a;font-size:.88rem}
@@ -291,52 +324,272 @@ export function renderGrid(tbody, items) {
   }).join('');
 }
 
+function renderBars(rows, maxVal) {
+  if (!rows.length) return '<div style="color:#64748b;font-size:.82rem">لا توجد بيانات متاحة.</div>';
+  const top = maxVal || Math.max(...rows.map(r => r.count), 1);
+  return rows.map(r => {
+    const pct = Math.min(100, Math.round((r.count / top) * 100));
+    return `
+      <div class="dash-bar-row">
+        <div class="dash-bar-head">
+          <span>${esc(r.label)}</span>
+          <span>${r.count}</span>
+        </div>
+        <div class="dash-bar-track">
+          <div class="dash-bar-fill" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 export class DashboardView {
   constructor(api, onNavigate) {
     this.api = api;
     this.onNavigate = onNavigate;
+    this.yearFilter = '';
+    this.deptFilter = '';
   }
+
   async mount(container) {
     let data = {};
     try {
       data = await loadData(this.api);
     } catch (e) {}
+
     const schedules = schedulesOf(data);
-    const courses = Array.isArray(data?.courses) ? data.courses : schedules;
-    const instructors = Array.isArray(data?.instructors) ? data.instructors : [];
-    const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
+    const courses = pickArray(data, ['courses', 'subjects', 'materials', 'المواد', 'المواد الدراسية']);
+    const faculty = pickArray(data, ['instructors', 'faculty', 'doctors', 'أعضاء هيئة التدريس']);
+    const rooms = pickArray(data, ['rooms', 'halls', 'القاعات', 'المدرجات والقاعات']);
+    const groups = pickArray(data, ['groups', 'الفرق والمجموعات']);
+    const periods = pickArray(data, ['periods', 'timeSlots', 'الفترات الزمنية', 'الفترات']);
+    const rules = pickArray(data, ['rules', 'collegeRules', 'قواعد الكلية']);
+    const notes = pickArray(data, ['notes', 'reviewNotes', 'ملاحظات المراجعة', 'ملاحظات']);
+
+    const courseRows = courses.length ? courses : schedules;
+
+    const yearsSet = new Set();
+    const deptsSet = new Set();
+    courseRows.forEach(r => {
+      const y = getVal(r, ['الفرقة *', 'الفرقة', 'yearLevel']);
+      const d = getVal(r, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']);
+      if (y) yearsSet.add(y);
+      if (d) deptsSet.add(d);
+    });
+    groups.forEach(g => {
+      const y = getVal(g, ['الفرقة', 'yearLevel']);
+      const d = getVal(g, ['البرنامج / الشعبة', 'الشعبة', 'القسم', 'department']);
+      if (y) yearsSet.add(y);
+      if (d) deptsSet.add(d);
+    });
+    faculty.forEach(f => {
+      const d = getVal(f, ['القسم *', 'القسم', 'department']);
+      if (d) deptsSet.add(d);
+    });
+
+    const yearsList = sortYears([...yearsSet]);
+    const deptsList = [...deptsSet].sort((a, b) => a.localeCompare(b, 'ar'));
 
     container.innerHTML = `
-      <div style="background:#fff;padding:20px;border-radius:10px;border:1px solid #e2e8f0">
-        <h2 style="margin:0 0 6px">الداش بورد</h2>
-        <p style="margin:0 0 16px;color:#475569">نظرة عامة على بيانات الجداول الدراسية في أكاديمية السادات.</p>
-        <div class="sada-stats-grid">
-          <div class="sada-stat-card">
-            <div class="sada-stat-label">صفوف الجداول / المواد</div>
-            <div class="sada-stat-val">${courses.length}</div>
+      <div class="dash-wrap">
+        <div class="dash-top">
+          <div>
+            <h2 style="margin:0 0 4px">الداش بورد — أكاديمية السادات</h2>
+            <div style="color:#64748b;font-size:.84rem">تحليل شامل لجميع بيانات الشيت: المواد، أعضاء هيئة التدريس، القاعات، المجموعات، الفترات، القواعد، والملاحظات.</div>
           </div>
-          <div class="sada-stat-card">
-            <div class="sada-stat-label">أعضاء هيئة التدريس</div>
-            <div class="sada-stat-val">${instructors.length}</div>
-          </div>
-          <div class="sada-stat-card">
-            <div class="sada-stat-label">القاعات والمدرجات</div>
-            <div class="sada-stat-val">${rooms.length}</div>
+          <div class="dash-filter-bar">
+            <select id="dashYearSel" class="dash-sel">
+              <option value="">كل الفرق</option>
+              ${yearsList.map(y => `<option value="${esc(y)}">${esc(y)}</option>`).join('')}
+            </select>
+            <select id="dashDeptSel" class="dash-sel">
+              <option value="">كل الأقسام / الشعب</option>
+              ${deptsList.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('')}
+            </select>
+            <button id="dashRefreshBtn" class="dash-btn" type="button">تحديث البيانات</button>
+            <button class="dash-btn primary" data-nav="scheduler" type="button">منسق الجداول</button>
           </div>
         </div>
-        <div class="sada-quick-actions">
-          <button class="sada-action-btn" data-go="scheduler" type="button">الانتقال إلى 1) منسق الجداول</button>
-          <button class="sada-action-btn" data-go="doctor" type="button">الانتقال إلى 2) دكتور / معيد</button>
-          <button class="sada-action-btn" data-go="student" type="button">الانتقال إلى 3) طالب</button>
-        </div>
+        <div id="dashBody"></div>
       </div>
     `;
 
-    container.querySelectorAll('[data-go]').forEach(btn => {
+    const renderDash = () => {
+      const filteredCourses = courseRows.filter(r => {
+        const y = getVal(r, ['الفرقة *', 'الفرقة', 'yearLevel']);
+        const d = getVal(r, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']);
+        if (this.yearFilter && !sameYear(y, this.yearFilter)) return false;
+        if (this.deptFilter && normAr(d) !== normAr(this.deptFilter)) return false;
+        return true;
+      });
+
+      const lecHours = filteredCourses.reduce((s, r) => s + toNum(getVal(r, ['ساعات المحاضرة أسبوعياً *', 'ساعات المحاضرة أسبوعياً', 'ساعات المحاضرة'])), 0);
+      const secHours = filteredCourses.reduce((s, r) => s + toNum(getVal(r, ['ساعات السكشن أسبوعياً', 'ساعات السكاشن', 'ساعات السكشن'])), 0);
+      const roomCap = rooms.reduce((s, r) => s + toNum(getVal(r, ['* السعة (عدد الطلاب)', 'السعة (عدد الطلاب)', 'السعة', 'capacity'])), 0);
+
+      const byDeptMap = new Map();
+      filteredCourses.forEach(r => {
+        const d = getVal(r, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || 'غير محدد';
+        byDeptMap.set(d, (byDeptMap.get(d) || 0) + 1);
+      });
+      const deptBars = [...byDeptMap.entries()]
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8);
+
+      const byRoleMap = new Map();
+      faculty.forEach(f => {
+        const role = getVal(f, ['الدرجة الوظيفية *', 'الدرجة الوظيفية', 'role']) || 'غير محدد';
+        byRoleMap.set(role, (byRoleMap.get(role) || 0) + 1);
+      });
+      const roleBars = [...byRoleMap.entries()]
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count);
+
+      const box = document.getElementById('dashBody');
+      if (!box) return;
+
+      box.innerHTML = `
+        <div class="dash-kpis">
+          <div class="dash-kpi">
+            <div class="dash-kpi-lbl">المواد / الصفوف</div>
+            <div class="dash-kpi-num">${filteredCourses.length}</div>
+            <div class="dash-kpi-sub">محاضرات: ${lecHours}س | سكاشن: ${secHours}س</div>
+          </div>
+          <div class="dash-kpi">
+            <div class="dash-kpi-lbl">أعضاء هيئة التدريس</div>
+            <div class="dash-kpi-num">${faculty.length}</div>
+            <div class="dash-kpi-sub">دكاترة ومعيدون ومدرسون مساعدون</div>
+          </div>
+          <div class="dash-kpi">
+            <div class="dash-kpi-lbl">القاعات والمدرجات</div>
+            <div class="dash-kpi-num">${rooms.length}</div>
+            <div class="dash-kpi-sub">إجمالي السعة: ${roomCap.toLocaleString('en-US')} طالب</div>
+          </div>
+          <div class="dash-kpi">
+            <div class="dash-kpi-lbl">الفرق والمجموعات</div>
+            <div class="dash-kpi-num">${groups.length}</div>
+            <div class="dash-kpi-sub">الفترات الزمنية: ${periods.length}</div>
+          </div>
+          <div class="dash-kpi">
+            <div class="dash-kpi-lbl">قواعد الكلية والملاحظات</div>
+            <div class="dash-kpi-num">${rules.length} / ${notes.length}</div>
+            <div class="dash-kpi-sub">قاعدة / ملاحظة مراجعة</div>
+          </div>
+        </div>
+
+        <div class="dash-grid-2" style="margin-top:16px">
+          <div class="dash-box">
+            <h3 class="dash-box-title">توزيع المواد حسب القسم / الشعبة</h3>
+            ${renderBars(deptBars)}
+          </div>
+          <div class="dash-box">
+            <h3 class="dash-box-title">توزيع أعضاء هيئة التدريس حسب الدرجة الوظيفية</h3>
+            ${renderBars(roleBars)}
+          </div>
+        </div>
+
+        <div class="dash-grid-2" style="margin-top:16px">
+          <div class="dash-box">
+            <h3 class="dash-box-title">قواعد الكلية (${rules.length})</h3>
+            <div style="overflow-x:auto">
+              <table class="dash-tbl">
+                <thead><tr><th>البند</th><th>القيمة</th><th>ملاحظات</th></tr></thead>
+                <tbody>
+                  ${rules.length ? rules.slice(0, 10).map(r => `
+                    <tr>
+                      <td>${esc(getVal(r, ['البند', 'item', 'title']) || '-')}</td>
+                      <td>${esc(getVal(r, ['القيمة', 'value', 'desc']) || '-')}</td>
+                      <td>${esc(getVal(r, ['المصدر / ملاحظات', 'ملاحظات', 'notes']) || '-')}</td>
+                    </tr>
+                  `).join('') : '<tr><td colspan="3">لا توجد قواعد مسجلة.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="dash-box">
+            <h3 class="dash-box-title">ملاحظات المراجعة (${notes.length})</h3>
+            <div style="overflow-x:auto">
+              <table class="dash-tbl">
+                <thead><tr><th>الموضوع</th><th>التفاصيل</th></tr></thead>
+                <tbody>
+                  ${notes.length ? notes.slice(0, 10).map(n => `
+                    <tr>
+                      <td>${esc(getVal(n, ['الموضوع', 'topic', 'title']) || '-')}</td>
+                      <td>${esc(getVal(n, ['التفاصيل', 'details', 'note']) || '-')}</td>
+                    </tr>
+                  `).join('') : '<tr><td colspan="2">لا توجد ملاحظات مراجعة.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-box" style="margin-top:16px">
+          <h3 class="dash-box-title">عينة من المواد والجداول (${filteredCourses.length})</h3>
+          <div style="overflow-x:auto">
+            <table class="dash-tbl">
+              <thead>
+                <tr>
+                  <th>الكود</th>
+                  <th>المادة</th>
+                  <th>الفرقة</th>
+                  <th>الشعبة / القسم</th>
+                  <th>المحاضرة</th>
+                  <th>المعيدين</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredCourses.length ? filteredCourses.slice(0, 15).map(r => `
+                  <tr>
+                    <td>${esc(getVal(r, ['كود المادة', 'code']) || '-')}</td>
+                    <td>${esc(getVal(r, ['اسم المادة *', 'اسم المادة', 'subject']) || '-')}</td>
+                    <td>${esc(getVal(r, ['الفرقة *', 'الفرقة', 'yearLevel']) || '-')}</td>
+                    <td>${esc(getVal(r, ['الشعبة / القسم', 'القسم *', 'القسم', 'department']) || '-')}</td>
+                    <td>${esc(getVal(r, ['د. المحاضرة *', 'د. المحاضرة', 'doctor']) || '-')}</td>
+                    <td>${esc(getVal(r, ['المعيدين / السكاشن', 'assistant']) || '-')}</td>
+                  </tr>
+                `).join('') : '<tr><td colspan="6">لا توجد مواد مطابقة للفلتر الحالي.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    const ySel = document.getElementById('dashYearSel');
+    const dSel = document.getElementById('dashDeptSel');
+    const refBtn = document.getElementById('dashRefreshBtn');
+
+    if (ySel) {
+      ySel.value = this.yearFilter;
+      ySel.onchange = () => {
+        this.yearFilter = ySel.value;
+        renderDash();
+      };
+    }
+    if (dSel) {
+      dSel.value = this.deptFilter;
+      dSel.onchange = () => {
+        this.deptFilter = dSel.value;
+        renderDash();
+      };
+    }
+    if (refBtn) {
+      refBtn.onclick = async () => {
+        refBtn.textContent = '...';
+        await this.mount(container);
+      };
+    }
+
+    container.querySelectorAll('[data-nav]').forEach(btn => {
       btn.onclick = () => {
-        if (typeof this.onNavigate === 'function') this.onNavigate(btn.dataset.go);
+        if (typeof this.onNavigate === 'function') this.onNavigate(btn.dataset.nav);
       };
     });
+
+    renderDash();
   }
 }
 
