@@ -24,8 +24,8 @@ export class App {
 
   renderLayout() {
     this.container.innerHTML = `
-      <div style="background:#f8fafc;min-height:100vh;font-family:'IBM Plex Sans Arabic','Readex Pro',system-ui,sans-serif;direction:rtl;text-align:right;padding:20px;">
-        <div style="background:#ffffff;padding:18px 20px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;border:1px solid #e2e8f0;">
+      <div style="background:#f8fafc;min-height:100vh;font-family:system-ui,sans-serif;direction:rtl;text-align:right;padding:20px;">
+        <div style="background:#ffffff;padding:16px 20px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;border:1px solid #e2e8f0;">
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
             <button id="navDashboard" class="app-nav-btn" data-view="dashboard">الداش بورد</button>
             <button id="navScheduler" class="app-nav-btn" data-view="scheduler">1) منسق الجداول</button>
@@ -42,8 +42,6 @@ export class App {
       btn.style.borderRadius = '8px';
       btn.style.fontWeight = '700';
       btn.style.cursor = 'pointer';
-      btn.style.fontFamily = 'inherit';
-      btn.style.transition = '0.15s';
       btn.addEventListener('click', () => this.switchView(btn.dataset.view));
     });
   }
