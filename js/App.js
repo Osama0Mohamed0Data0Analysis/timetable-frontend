@@ -1,4 +1,3 @@
-import { DashboardView } from './DashboardView.js';
 import { SheetChatBot } from './components/SheetChatBot.js';
 
 export const COLS = {
@@ -224,7 +223,7 @@ export function injectStyles() {
     .sada-brand-title{margin:0;font-size:1.15rem;font-weight:800;letter-spacing:.2px;color:#fff}
     .sada-brand-sub{margin:0;font-size:.8rem;color:#cbd5e1;font-weight:500}
     .sada-nav-list{padding:14px 10px;display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto}
-    .sada-nav-btn{width:100%;display:flex;align-items:center;justify-content:flex-start;gap:10px;padding:12px 16px;border:none;border-radius:10px;background:transparent;color:#e2e8f0;font:inherit;font-size:.92rem;font-weight:700;cursor:pointer;text-align:right;transition:background .18s ease,color .18s ease,transform .15s ease}
+    .sada-nav-btn{width:100%;display:flex;align-items:center;justify-content:flex-start;gap:10px;padding:12px 16px;border:none;border-radius:10px;background:transparent;color:#e2e8f0;font:inherit;font-size:.92rem;font-weight:700;cursor:pointer;text-align:right;transition:background .18s ease,color .18s ease}
     .sada-nav-btn:hover{background:rgba(255,255,255,.1);color:#fff}
     .sada-nav-btn.on{background:#2563eb;color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.38)}
     .sada-nav-icon{font-size:1.05rem;line-height:1}
@@ -235,6 +234,13 @@ export function injectStyles() {
     .sada-mobile-toggle{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:8px;padding:6px 12px;font:inherit;font-size:.85rem;font-weight:700;cursor:pointer}
     .sada-content{flex:1;padding:18px 20px 36px;max-width:100%}
     .sada-backdrop{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:190}
+    .sada-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px}
+    .sada-stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+    .sada-stat-label{color:#64748b;font-size:.82rem;font-weight:600;margin-bottom:6px}
+    .sada-stat-val{color:#0f172a;font-size:1.45rem;font-weight:800}
+    .sada-quick-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .sada-action-btn{padding:10px 16px;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;font:inherit;font-size:.86rem;font-weight:700;cursor:pointer}
+    .sada-action-btn:hover{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
     .tt-loading{padding:24px;text-align:center;color:#475569;font-weight:600}
     .tt-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
     .tt-subj{font-weight:700;color:#0f172a;font-size:.88rem}
@@ -283,6 +289,55 @@ export function renderGrid(tbody, items) {
     }).join('');
     return `<tr><th style="white-space:nowrap;background:#f8fafc;padding:8px">${esc(sl)}</th>${tds}</tr>`;
   }).join('');
+}
+
+export class DashboardView {
+  constructor(api, onNavigate) {
+    this.api = api;
+    this.onNavigate = onNavigate;
+  }
+  async mount(container) {
+    let data = {};
+    try {
+      data = await loadData(this.api);
+    } catch (e) {}
+    const schedules = schedulesOf(data);
+    const courses = Array.isArray(data?.courses) ? data.courses : schedules;
+    const instructors = Array.isArray(data?.instructors) ? data.instructors : [];
+    const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
+
+    container.innerHTML = `
+      <div style="background:#fff;padding:20px;border-radius:10px;border:1px solid #e2e8f0">
+        <h2 style="margin:0 0 6px">الداش بورد</h2>
+        <p style="margin:0 0 16px;color:#475569">نظرة عامة على بيانات الجداول الدراسية في أكاديمية السادات.</p>
+        <div class="sada-stats-grid">
+          <div class="sada-stat-card">
+            <div class="sada-stat-label">صفوف الجداول / المواد</div>
+            <div class="sada-stat-val">${courses.length}</div>
+          </div>
+          <div class="sada-stat-card">
+            <div class="sada-stat-label">أعضاء هيئة التدريس</div>
+            <div class="sada-stat-val">${instructors.length}</div>
+          </div>
+          <div class="sada-stat-card">
+            <div class="sada-stat-label">القاعات والمدرجات</div>
+            <div class="sada-stat-val">${rooms.length}</div>
+          </div>
+        </div>
+        <div class="sada-quick-actions">
+          <button class="sada-action-btn" data-go="scheduler" type="button">الانتقال إلى 1) منسق الجداول</button>
+          <button class="sada-action-btn" data-go="doctor" type="button">الانتقال إلى 2) دكتور / معيد</button>
+          <button class="sada-action-btn" data-go="student" type="button">الانتقال إلى 3) طالب</button>
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll('[data-go]').forEach(btn => {
+      btn.onclick = () => {
+        if (typeof this.onNavigate === 'function') this.onNavigate(btn.dataset.go);
+      };
+    });
+  }
 }
 
 export class SchedulerView {
