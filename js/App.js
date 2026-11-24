@@ -1,4 +1,5 @@
 import { SheetChatBot } from './components/SheetChatBot.js';
+import { DashboardView } from './views/DashboardView.js';
 
 export const COLS = {
   id: ['id', 'ID', 'رقم', 'م'],
